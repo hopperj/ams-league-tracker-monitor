@@ -1,0 +1,30 @@
+AMS League Recorder for Windows x64
+
+One build works on both Intel and AMD 64-bit Windows PCs.
+Python and the window toolkit are included. No separate Python installation or
+compilation is required.
+
+1. Extract this ZIP to a folder, then double-click AMSLeagueRecorder.exe.
+2. In AMS2, select Options > System > Shared Memory > Project CARS 2.
+3. Enter the recorder upload token and session capture code supplied by your
+   league administrator. The server address is prefilled:
+   https://ams2.ioresearch.ca:5443
+4. Choose Save setup & start.
+
+Green / Transmitting means recent AMS2 data has been received by the server.
+Red includes an explanation of what needs attention. Data saved - review means
+the server saved the upload but has processing notes; later uploads continue.
+Open Data received on the league website to review those notes.
+
+The app remembers your settings and starts recording on future launches.
+To change the session capture code, Stop, open Setup, enter the new code,
+and save/start again. Use a new code for each game session and race restart.
+
+Failed deliveries remain queued locally and retry. Closing the app retains the
+remaining queue for the next launch. Settings, queue, and rotating recorder.log
+files are under %LOCALAPPDATA%\AMSLeagueRecorder.
+
+This executable records game data only. The optional UDP archive is available
+through the source/portable command-line client.
+
+Source: https://github.com/hopperj/ams-league-tracker-monitor
