@@ -98,6 +98,8 @@ The local queue pauses capture at the configured pending-data budget (2,048 MB b
 
 ## Portable distribution
 
+Download the Windows ZIP or portable Python archive from the [latest release](https://github.com/hopperj/ams-league-tracker-monitor/releases/latest). Release assets include the standalone executable, its checksum, and `SHA256SUMS` for all downloads.
+
 Build a single Python archive:
 
 ```sh
@@ -117,7 +119,9 @@ powershell -ExecutionPolicy Bypass -File tools/build_windows.ps1
 
 This requires x64 Windows Python, runs the recorder tests, installs PyInstaller into a local virtual environment, and builds the **windowed** `dist\AMSLeagueRecorder-Windows-x64-Intel-AMD.exe`. It then checks that the packaged Tcl/Tk window opens and closes without recording or contacting the server. One x64 build targets both Intel and AMD Windows PCs. The executable is the GUI application; use the Python archive or source for CLI commands.
 
-The [Recorder checks workflow](https://github.com/hopperj/ams-league-tracker-monitor/actions/workflows/tests.yml) runs on pushes, pull requests, and manual dispatch. After the Linux/Windows Python test matrix passes, it builds the Windows x64 executable, checks its packaged window, and publishes **AMSLeagueRecorder-Windows-x64-Intel-AMD**. Open a successful run and download that artifact ZIP. It contains the executable, quick-start instructions, and a SHA-256 checksum. Drivers extract it and double-click `AMSLeagueRecorder-Windows-x64-Intel-AMD.exe`; no Python installation or build is needed.
+The [Recorder checks workflow](https://github.com/hopperj/ams-league-tracker-monitor/actions/workflows/tests.yml) runs on branch pushes, pull requests, and manual dispatch. After the Linux/Windows Python test matrix passes, it builds the Windows x64 executable, checks its packaged window, and publishes **AMSLeagueRecorder-Windows-x64-Intel-AMD** as a CI artifact. Drivers can get the published version from [Releases](https://github.com/hopperj/ams-league-tracker-monitor/releases). The ZIP contains the executable, quick-start instructions, and a SHA-256 checksum. Extract it and double-click `AMSLeagueRecorder-Windows-x64-Intel-AMD.exe`; no Python installation or build is needed.
+
+To publish a version, update `pyproject.toml`, push the commit to `main`, then push an annotated `v<version>` tag on that commit. The [release workflow](https://github.com/hopperj/ams-league-tracker-monitor/actions/workflows/release.yml) waits for the matching successful main-branch build, verifies the executable checksum and architecture, packages the portable archive, and uploads all assets before publishing. Existing releases are not overwritten. A failed upload can leave an unpublished draft for recovery.
 
 The automated Windows mapping/window checks complement live AMS2 capture validation on a game PC. The development Mac does not generate native Windows executables.
 

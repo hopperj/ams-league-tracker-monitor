@@ -1,0 +1,80 @@
+name: Publish recorder release
+on:
+  push:
+    tags: ['v*']
+permissions: {}
+concurrency:
+  group: recorder-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Wait for the checked Windows build of this exact commit
+        id: build
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, time, tomllib
+          from pathlib import Path
+          version = tomllib.loads(Path('pyproject.toml').read_text())['project']['version']
+          if os.environ['RELEASE_TAG'] != 'v' + version:
+              raise SystemExit('Release tag must match the version in pyproject.toml')
+          sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          previous = None
+          for attempt in range(90):
+              runs = json.loads(subprocess.check_output([
+                  'gh', 'run', 'list', '--workflow', 'tests.yml', '--branch', 'main',
+                  '--commit', sha, '--event', 'push', '--limit', '1',
+                  '--json', 'databaseId,status,conclusion,headSha'], text=True))
+              run = runs[0] if runs else None
+              state = run['status'] if run else 'waiting for a main-branch build'
+              if state != previous:
+                  print(state, flush=True)
+                  previous = state
+              if run and run['status'] == 'completed':
+                  if run['headSha'] != sha or run['conclusion'] != 'success':
+                      raise SystemExit('Recorder checks did not pass for this release commit')
+                  with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                      output.write('run-id=' + str(run['databaseId']) + '\n')
+                  break
+              time.sleep(10)
+          else:
+              raise SystemExit('No successful build arrived. Push this commit to main before releasing.')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: AMSLeagueRecorder-Windows-x64-Intel-AMD
+          path: dist
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.build.outputs.run-id }}
+      - name: Prepare portable archive and release assets
+        env:
+          BUILD_RUN_ID: ${{ steps.build.outputs.run-id }}
+        run: |
+          python tools/package_recorder.py
+          python tools/prepare_release.py --tag "$RELEASE_TAG" --build-url "https://github.com/$GH_REPO/actions/runs/$BUILD_RUN_ID" --notes "$RUNNER_TEMP/recorder-release-notes.md"
+      - name: Upload all assets before publishing
+        shell: bash
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "AMS League Recorder $RELEASE_TAG" --notes-file "$RUNNER_TEMP/recorder-release-notes.md" \
+            dist/AMSLeagueRecorder-Windows-x64-Intel-AMD.zip \
+            dist/AMSLeagueRecorder-Windows-x64-Intel-AMD.exe \
+            dist/AMSLeagueRecorder-Windows-x64-Intel-AMD.exe.sha256 \
+            dist/AMSLeagueRecorder-Python-Portable.pyz \
+            dist/SHA256SUMS
+          gh release edit "$RELEASE_TAG" --draft=false --latest

@@ -1,6 +1,7 @@
 name: Recorder checks
 on:
   push:
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 permissions:
