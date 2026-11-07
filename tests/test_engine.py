@@ -69,9 +69,15 @@ class EngineTest(unittest.TestCase):
         self.assertFalse(status.snapshot().green)
 
     def test_failed_batch_retries_identical_bytes_and_status_recovers(self):
-        self.failures=1;self.args.duration=1.35
+        self.failures=1;self.args.duration=15
         events=[]
-        run(self.args,on_event=lambda kind,**values:events.append(kind))
+        stop=threading.Event()
+        def progress(kind,**values):
+            events.append(kind)
+            if kind=='uploaded':stop.set()
+        # Stop after the acknowledgement, allowing slow Windows disk commits
+        # without assuming the first attempt + one-second retry fit in 1.35s.
+        run(self.args,stop_event=stop,on_event=progress)
         self.assertIn("upload_error",events);self.assertIn("uploaded",events)
         self.assertLess(events.index("upload_error"),events.index("uploaded"))
         self.assertEqual(self.retry_bytes[0],self.retry_bytes[1])
