@@ -1,10 +1,12 @@
-AMS League Recorder for Windows x64
+AMS League Recorder for Windows x64 (Intel and AMD)
 
 One build works on both Intel and AMD 64-bit Windows PCs.
+The x64 architecture is also called x86-64 or AMD64; it supports both brands.
 Python and the window toolkit are included. No separate Python installation or
 compilation is required.
 
-1. Extract this ZIP to a folder, then double-click AMSLeagueRecorder.exe.
+1. Extract this ZIP, then double-click
+   AMSLeagueRecorder-Windows-x64-Intel-AMD.exe.
 2. In AMS2, select Options > System > Shared Memory > Project CARS 2.
 3. Enter the recorder upload token and session capture code supplied by your
    league administrator. The server address is prefilled:

@@ -1,11 +1,11 @@
-"""Build a dependency-free .pyz for distribution to drivers with Python 3.9+."""
+"""Build a portable Python archive; it bundles no OS/CPU-specific runtime."""
 from pathlib import Path
 import shutil
 import tempfile
 import zipapp
 
 root=Path(__file__).resolve().parents[1]
-destination=root/'dist'/'AMSLeagueRecorder.pyz'
+destination=root/'dist'/'AMSLeagueRecorder-Python-Portable.pyz'
 destination.parent.mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory() as directory:
     shutil.copytree(root/'ams_recorder',Path(directory)/'ams_recorder',ignore=shutil.ignore_patterns('__pycache__','*.pyc'))

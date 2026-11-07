@@ -17,7 +17,7 @@ Open the UI from source:
 python -m ams_recorder.gui
 ```
 
-Or run `python dist/AMSLeagueRecorder.pyz` with no arguments after packaging. The native Windows `AMSLeagueRecorder.exe` opens the window directly, without a console.
+Or run `python dist/AMSLeagueRecorder-Python-Portable.pyz` with no arguments after packaging. The native Windows `AMSLeagueRecorder-Windows-x64-Intel-AMD.exe` opens the window directly, without a console.
 
 On first launch, the **Recorder setup** window asks for the server address (prefilled with `https://ams2.ioresearch.ca:5443`), the recorder **upload** token, and the session capture code. **Save setup & start** verifies the recorder identity and begins capture. The token is masked in the window. Previously saved command-line configuration is reused.
 
@@ -102,20 +102,22 @@ Build a single Python archive:
 
 ```sh
 python tools/package_recorder.py
-python dist/AMSLeagueRecorder.pyz --help
+python dist/AMSLeagueRecorder-Python-Portable.pyz --help
 ```
 
-Send `dist/AMSLeagueRecorder.pyz` to drivers with 64-bit Python and Tk installed. Running it without arguments opens the recorder window. Explicit commands retain the CLI: replace `python -m ams_recorder` in the commands above with `python AMSLeagueRecorder.pyz`.
+Send `dist/AMSLeagueRecorder-Python-Portable.pyz` to drivers with 64-bit Python and Tk installed. Running it without arguments opens the recorder window. Explicit commands retain the CLI: replace `python -m ams_recorder` in the commands above with `python AMSLeagueRecorder-Python-Portable.pyz`.
 
-An optional native executable build script is provided for Windows:
+The native download is named `AMSLeagueRecorder-Windows-x64-Intel-AMD.exe`, and its ZIP and checksum use the same OS/architecture label. **x64**, **x86-64**, and **AMD64** refer to the same CPU architecture used by both Intel and AMD 64-bit Windows PCs. Separate Intel and AMD builds are unnecessary. The `Python-Portable.pyz` download bundles no OS/CPU-specific runtime and requires Python and Tk on the target computer.
+
+A native executable build script is provided for Windows:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools/build_windows.ps1
 ```
 
-This requires x64 Windows Python, runs the recorder tests, installs PyInstaller into a local virtual environment, and builds the **windowed** `dist\AMSLeagueRecorder.exe`. It then checks that the packaged Tcl/Tk window opens and closes without recording or contacting the server. One x64 build targets both Intel and AMD Windows PCs. The executable is the GUI application; use the Python archive or source for CLI commands.
+This requires x64 Windows Python, runs the recorder tests, installs PyInstaller into a local virtual environment, and builds the **windowed** `dist\AMSLeagueRecorder-Windows-x64-Intel-AMD.exe`. It then checks that the packaged Tcl/Tk window opens and closes without recording or contacting the server. One x64 build targets both Intel and AMD Windows PCs. The executable is the GUI application; use the Python archive or source for CLI commands.
 
-The [Recorder checks workflow](https://github.com/hopperj/ams-league-tracker-monitor/actions/workflows/tests.yml) runs on pushes, pull requests, and manual dispatch. After the Linux/Windows Python test matrix passes, it builds the Windows x64 executable, checks its packaged window, and publishes **AMSLeagueRecorder-Windows-x64**. Open a successful run and download that artifact ZIP. It contains the executable, quick-start instructions, and a SHA-256 checksum. Drivers extract it and double-click `AMSLeagueRecorder.exe`; no Python installation or build is needed.
+The [Recorder checks workflow](https://github.com/hopperj/ams-league-tracker-monitor/actions/workflows/tests.yml) runs on pushes, pull requests, and manual dispatch. After the Linux/Windows Python test matrix passes, it builds the Windows x64 executable, checks its packaged window, and publishes **AMSLeagueRecorder-Windows-x64-Intel-AMD**. Open a successful run and download that artifact ZIP. It contains the executable, quick-start instructions, and a SHA-256 checksum. Drivers extract it and double-click `AMSLeagueRecorder-Windows-x64-Intel-AMD.exe`; no Python installation or build is needed.
 
 The automated Windows mapping/window checks complement live AMS2 capture validation on a game PC. The development Mac does not generate native Windows executables.
 

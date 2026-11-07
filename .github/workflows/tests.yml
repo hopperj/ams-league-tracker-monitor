@@ -38,14 +38,14 @@ jobs:
         shell: powershell
         run: |
           Copy-Item docs/windows-quickstart.txt dist/README.txt
-          $hash = (Get-FileHash dist/AMSLeagueRecorder.exe -Algorithm SHA256).Hash.ToLower()
-          "$hash  AMSLeagueRecorder.exe" | Out-File dist/AMSLeagueRecorder.exe.sha256 -Encoding ascii
+          $hash = (Get-FileHash dist/AMSLeagueRecorder-Windows-x64-Intel-AMD.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  AMSLeagueRecorder-Windows-x64-Intel-AMD.exe" | Out-File dist/AMSLeagueRecorder-Windows-x64-Intel-AMD.exe.sha256 -Encoding ascii
       - uses: actions/upload-artifact@v4
         with:
-          name: AMSLeagueRecorder-Windows-x64
+          name: AMSLeagueRecorder-Windows-x64-Intel-AMD
           path: |
-            dist/AMSLeagueRecorder.exe
-            dist/AMSLeagueRecorder.exe.sha256
+            dist/AMSLeagueRecorder-Windows-x64-Intel-AMD.exe
+            dist/AMSLeagueRecorder-Windows-x64-Intel-AMD.exe.sha256
             dist/README.txt
           if-no-files-found: error
           retention-days: 90
