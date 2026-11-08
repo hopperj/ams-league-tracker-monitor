@@ -101,12 +101,12 @@ class RecorderWindow:
         self.setup_frame = tk.Frame(self.setup_dialog, background=PAPER, padx=22, pady=12)
         self.setup_frame.pack(fill="both", expand=True)
         tk.Label(self.setup_frame, text="RECORDER SETUP", foreground=MUTED, background=PAPER, font=(family, 9, "bold")).pack(anchor="w", pady=(22, 5))
-        tk.Label(self.setup_frame, text="Use the upload token and capture code from your league dashboard.", foreground=MUTED, background=PAPER, font=(family, 9), wraplength=470, justify="left").pack(anchor="w", pady=(0, 8))
+        tk.Label(self.setup_frame, text="Enter your recorder token. AUTO organizes all driving, including solo practice. An explicit capture code is optional.", foreground=MUTED, background=PAPER, font=(family, 9), wraplength=470, justify="left").pack(anchor="w", pady=(0, 8))
         self.server = tk.StringVar(value=DEFAULT_SERVER)
         self.token = tk.StringVar()
-        self.event_code = tk.StringVar()
+        self.event_code = tk.StringVar(value="AUTO")
         self.entries = []
-        for label, variable, masked in (("Server address", self.server, False), ("Recorder upload token", self.token, True), ("Session capture code", self.event_code, False)):
+        for label, variable, masked in (("Server address", self.server, False), ("Recorder upload token", self.token, True), ("Capture code (optional)", self.event_code, False)):
             tk.Label(self.setup_frame, text=label, foreground=INK, background=PAPER, font=(family, 9)).pack(anchor="w", pady=(6, 3))
             entry = ttk.Entry(self.setup_frame, textvariable=variable, show="*" if masked else "")
             entry.pack(fill="x")
@@ -132,7 +132,7 @@ class RecorderWindow:
         self.server.set(config["server"])
         self.token.set(config["token"])
         self.event_code.set(config["event_code"])
-        self.driver.set(config["driver_name"] + "  ·  " + config["event_code"])
+        self.driver.set(config["driver_name"] + "  ·  " + ("Automatic recording" if config["event_code"]=="AUTO" else config["event_code"]))
 
     def hide_setup(self):
         self.setup_visible = False

@@ -17,12 +17,12 @@ def defaults():
 
 def connection_values(server, token, event):
     if not all(isinstance(value, str) for value in (server, token, event)):
-        raise ValueError("Enter the server, recorder token, and capture code")
-    server, token, event = server.strip(), token.strip(), event.strip().upper()
+        raise ValueError("Enter the server and recorder token")
+    server, token, event = server.strip(), token.strip(), event.strip().upper() or "AUTO"
     if not token:
         raise ValueError("Paste your recorder upload token from the league dashboard")
     if not re.fullmatch(r"[A-Z0-9_-]{1,32}", event):
-        raise ValueError("Enter the capture code supplied for this session")
+        raise ValueError("Use AUTO, leave the capture code blank, or enter the code supplied for a specific session")
     return Transport(server, token).server, token, event
 
 

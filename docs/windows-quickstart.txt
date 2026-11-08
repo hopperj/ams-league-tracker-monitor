@@ -8,8 +8,9 @@ compilation is required.
 1. Extract this ZIP, then double-click
    AMSLeagueRecorder-Windows-x64-Intel-AMD.exe.
 2. In AMS2, select Options > System > Shared Memory > Project CARS 2.
-3. Enter the recorder upload token and session capture code supplied by your
-   league administrator. The server address is prefilled:
+3. Enter the recorder upload token supplied by your league administrator.
+   Keep the capture code as AUTO (or leave it blank) to record all sessions.
+   The server address is prefilled:
    https://ams2.ioresearch.ca:5443
 4. Choose Save setup & start.
 
@@ -19,8 +20,10 @@ the server saved the upload but has processing notes; later uploads continue.
 Open Data received on the league website to review those notes.
 
 The app remembers your settings and starts recording on future launches.
-To change the session capture code, Stop, open Setup, enter the new code,
-and save/start again. Use a new code for each game session and race restart.
+AUTO records solo practice and league driving across tracks and cars. The server
+organizes sessions; administrators separately approve official league nights.
+Older saved capture codes remain supported. To enable automatic recording, Stop,
+open Setup, change the capture code to AUTO, and save/start again.
 
 Failed deliveries remain queued locally and retry. Closing the app retains the
 remaining queue for the next launch. Settings, queue, and rotating recorder.log

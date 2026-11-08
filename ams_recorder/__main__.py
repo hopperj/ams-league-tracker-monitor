@@ -25,7 +25,7 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     setup = sub.add_parser("configure")
     setup.add_argument("--server", required=True)
-    setup.add_argument("--event", required=True, help="Shared capture code for this specific session")
+    setup.add_argument("--event", default="AUTO", help="AUTO records all driving sessions; an explicit shared capture code remains supported")
     gui = sub.add_parser("gui", help="Open the recorder window")
     gui.add_argument("--spool", default=str(spool))
     gui.add_argument("--demo", action="store_true")

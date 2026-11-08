@@ -54,7 +54,7 @@ def main():
 
 ## Recorder
 
-Configure your recorder upload token and session capture code. The default server is https://ams2.ioresearch.ca:5443. Enable AMS2's **Shared Memory: Project CARS 2** setting.
+Configure your recorder upload token. Leave the capture code blank or use **AUTO** to record all driving sessions, including solo practice across different tracks and cars. Existing explicit capture codes remain supported. League-night approval is managed separately on the website. The default server is https://ams2.ioresearch.ca:5443. Enable AMS2's **Shared Memory: Project CARS 2** setting.
 
 The window shows a red/green delivery light. Failed deliveries stay queued locally; uploads saved with processing notes show **Data saved — review** and continue transmitting.
 
