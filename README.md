@@ -127,6 +127,8 @@ The automated Windows mapping/window checks complement live AMS2 capture validat
 
 ## Synthetic capture and replay
 
+The [full-rate Spa scenario](docs/synthetic-spa-race.md) generates three independent recorder streams for BootyWiz, EPaulD, and Foote, with complete synthetic memory snapshots, detailed telemetry, pit stops, and a race-review boundary case.
+
 Create a synthetic session in the dashboard and use its code:
 
 ```sh
