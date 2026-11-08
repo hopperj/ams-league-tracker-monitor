@@ -19,9 +19,9 @@ python -m ams_recorder.gui
 
 Or run `python dist/AMSLeagueRecorder-Python-Portable.pyz` with no arguments after packaging. The native Windows `AMSLeagueRecorder-Windows-x64-Intel-AMD.exe` opens the window directly, without a console.
 
-On first launch, the **Recorder setup** window asks for the server address (prefilled with `https://ams2.ioresearch.ca:5443`), the recorder **upload** token, and the session capture code. **Save setup & start** verifies the recorder identity and begins capture. The token is masked in the window. Previously saved command-line configuration is reused.
+On first launch, the **Recorder setup** window asks for the server address (prefilled with `https://ams2.ioresearch.ca:5443`), the recorder **upload** token, and an optional capture code (leave blank or use **AUTO**). **Save setup & start** verifies the recorder identity and begins capture. The token is masked in the window. Previously saved command-line configuration is reused.
 
-Later launches start recording automatically with saved settings. **Start recording** and **Stop** remain available. To change capture codes, stop, open **Setup**, enter the new code, then save and start. Setup runs in the background so the window stays responsive. A saved configuration can start capturing while offline; uploads retry and the light stays red until confirmed delivery resumes.
+Later launches start recording automatically with saved settings. **Start recording** and **Stop** remain available. With **AUTO**, driving sessions are organized automatically as practice, qualifying or race, including car/track changes and observed restarts. An administrator can later associate the captured stages with a league night. To switch an existing installation to AUTO, stop, open **Setup**, clear the capture code, then save and start. Queued uploads retain their original destination. Setup runs in the background so the window stays responsive. A saved configuration can start capturing while offline; uploads retry and the light stays red until confirmed delivery resumes.
 
 The window shows the age of the last upload and the queued sample count at the uploader's latest check. With default settings, an upload or capture older than 10 seconds turns the light red; more than 240 queued samples shows a catch-up condition. Green indicates data delivery, not an official result or guaranteed completeness of every telemetry channel.
 
@@ -30,15 +30,15 @@ Stopping or closing the app stops capture and waits for an in-progress request t
 ## Connect a recorder
 
 1. Start the server from the `ams-league-tracker-webapp` workspace. Its README covers the local setup.
-2. Sign in to the dashboard, create a session, and choose **Connect a recorder**.
+2. Sign in to the dashboard and choose **Connect a recorder**.
 3. Enter the driver's exact AMS2 display name and save the recorder upload token. Dashboard sign-in is separate from recorder credentials.
 4. From this workspace, configure the recorder:
 
 ```sh
-python -m ams_recorder configure --server http://127.0.0.1:8787 --event CAPTURE_CODE
+python -m ams_recorder configure --server http://127.0.0.1:8787
 ```
 
-Paste the **upload** token at the password prompt. Configuration associates the installation with the server-issued driver identity. It is stored under `%LOCALAPPDATA%\AMSLeagueRecorder` on Windows, or `~/.local/AMSLeagueRecorder` on other systems.
+Paste the **upload** token at the password prompt. The capture code defaults to **AUTO**; `--event CAPTURE_CODE` remains available for a manually created session. Configuration associates the installation with the server-issued driver identity. It is stored under `%LOCALAPPDATA%\AMSLeagueRecorder` on Windows, or `~/.local/AMSLeagueRecorder` on other systems.
 
 In AMS2 choose **Options > System > Shared Memory > Project CARS 2**, then run:
 

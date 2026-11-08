@@ -7,14 +7,14 @@ Send JSON to `POST /api/batches` with `Authorization: Bearer <upload-token>` and
   "schema_version": 1,
   "batch_id": "stable-client-batch-id",
   "recorder_id": "server-issued identity",
-  "event_code": "shared capture code",
+  "event_code": "AUTO",
   "run_id": "UUID generated per recorder process",
   "created_at_ms": 1794067200000,
   "frames": []
 }
 ```
 
-The normal client sends 1–120 frames from one event/run per batch, using UUIDs for batch IDs. The server does not require UUIDs or reject a batch for having more than 120 frames. It requires a JSON object and a stable UTF-8 `batch_id` of 1–128 characters. Limits are 8 MiB compressed and 16 MiB expanded/plain; the client targets at most 12 MiB of frame JSON before wrapping. Batches are immutable after entering the outbox.
+The normal client sends 1–120 frames from one configured capture code/run per batch, using UUIDs for batch IDs. The server does not require UUIDs or reject a batch for having more than 120 frames. It requires a JSON object and a stable UTF-8 `batch_id` of 1–128 characters. Limits are 8 MiB compressed and 16 MiB expanded/plain; the client targets at most 12 MiB of frame JSON before wrapping. Batches are immutable after entering the outbox.
 
 ## Receive first, process second
 
@@ -57,7 +57,7 @@ Field observations use one coherent record per entry, recorder/run, and 250 ms b
 
 Lap candidates are keyed by session, observed entry, completed lap, recorder, and run. Agreement within 10 ms forms a time cluster; each recorder gets one vote. Validity refers to the preceding observed lap. Missing prior context leaves validity unknown. A single-car rollback flags that observation and allows other cars to continue. A majority-field rollback quarantines that run's race projections while retaining all uploads.
 
-Replay, unsupported/inconsistent capture, wrong track/phase, and uncertain telemetry ownership are retained with explicit notes without affecting the corresponding projections. Formation data may contribute to its race session. Unknown sessions can be assigned later. Reopening a reviewed session automatically processes saved late receipts. Already projected captures cannot be reassigned by the simple inbox action without rebuilding results. Use a new capture code for each game session and race restart; a recorder restart can evade lap-reset heuristics.
+Replay, unsupported/inconsistent capture, wrong track/phase, and uncertain telemetry ownership are retained with explicit notes without affecting the corresponding projections. Formation data may contribute to its race session. Unknown sessions can be assigned later. Reopening a reviewed session automatically processes saved late receipts. Already projected captures cannot be reassigned by the simple inbox action without rebuilding results. Recorder v0.2 defaults to `AUTO` (blank codes also mean AUTO). The server routes each frame by phase, track/layout, settings, participant agreement, capture intervals and observed lap resets. One immutable batch can contribute to several discovered sessions; receipt destinations explain the routing. AUTO and sessions associated with a league night continue indexing after a publication; official results change only after an administrator publishes a new revision. For explicit legacy codes outside league nights, use a new capture code for each game session and race restart, or recover held captures through automatic organization. The SDK does not supply a dependable global race ID; ambiguous associations require review.
 
 The processor handles up to 10,000 frames per request and 1,000 participants per frame. Larger batches are retained completely and explicitly flagged for additional processing. Processing errors do not undo original receipt storage; recoverable errors/pending receipts are revisited on restart and administrators can retry processing.
 

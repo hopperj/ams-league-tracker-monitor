@@ -14,7 +14,7 @@ An acknowledged upload with processing warnings shows **Data saved — review** 
 
 ## Setup and shutdown
 
-The default address is `https://ams2.ioresearch.ca:5443`. First-time setup verifies the upload credential and checks queue destination binding before atomically saving configuration. Setup masks the token and does not log it. An existing setup is reused, and opening the window starts capture automatically. A saved configuration starts without requiring the network to be available first.
+The default address is `https://ams2.ioresearch.ca:5443`. The optional capture code defaults to **AUTO**, which records driving without per-session setup. Blank input also means AUTO. Previously saved explicit codes remain unchanged until the user edits setup. First-time setup verifies the upload credential and checks queue destination binding before atomically saving configuration. Setup masks the token and does not log it. An existing setup is reused, and opening the window starts capture automatically. A saved configuration starts without requiring the network to be available first.
 
 Changing a session code requires stopping first. Queued batches keep their original session code and immutable retry bytes. Stop/close cancels new capture and waits for the current upload request to finish, retaining any remaining queue for the next run. Restarting the app does not delete the queue. Saved late or unassigned uploads do not block later batches. An administrator can reopen or assign those captures on the server.
 
