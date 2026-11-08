@@ -62,12 +62,23 @@ class WindowTest(unittest.TestCase):
             self.assertIsNone(self.window.worker)
             self.assertEqual(self.window.light.itemcget(self.window.bulb,"fill"),RED)
 
-    def test_missing_token_shows_setup_problem_without_a_network_request(self):
-        self.window.token.set("")
-        self.window.start();self.window.poll()
-        self.assertIsNone(self.window.worker)
-        self.assertIn("upload token",self.window.detail.get())
-        self.assertEqual(self.window.light.itemcget(self.window.bulb,"fill"),RED)
+    def test_saved_connections_have_no_key_field(self):
+        self.assertFalse(hasattr(self.window,'token'))
+        self.assertEqual(len(self.window.entries),2)
+        self.assertEqual(self.window.config['token'],'test-token')
+
+    def test_first_launch_creates_an_offline_connection_without_a_setup_prompt(self):
+        import tkinter as tk
+        root=tk.Toplevel(self.root);root.withdraw()
+        try:
+            with patch('ams_recorder.transport.Transport.request',side_effect=AssertionError('No first-launch network call')):
+                window=RecorderWindow(root,self.path/'fresh.json',self.path/'fresh-queue.sqlite3',auto_start=False)
+            self.assertTrue(window.config['auto_registration'])
+            self.assertEqual(len(window.config['token']),43)
+            self.assertEqual(window.config['event_code'],'AUTO')
+            self.assertFalse(window.setup_visible)
+            self.assertFalse(hasattr(window,'token'))
+        finally:root.destroy()
 
 
 if __name__ == "__main__":unittest.main()

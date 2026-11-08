@@ -1,5 +1,6 @@
 import json
 import time
+import gzip
 import urllib.parse
 import urllib.error
 import urllib.request
@@ -58,3 +59,15 @@ class Transport:
             samples.append((rtt, result["server_time_ms"] - (before + rtt / 2), result))
         rtt, offset, info = min(samples, key=lambda s: s[0])
         return offset, rtt / 2, info
+
+    def register(self, recorder_id):
+        payload = gzip.compress(json.dumps({'recorder_id': recorder_id}).encode(), mtime=0)
+        try:
+            info = self.request('/api/recorders/register', payload)
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                error.server_message = 'The server needs an update for automatic recorder connection. Saved data will retry.'
+            raise
+        if info.get('recorder_id') != recorder_id:
+            raise ValueError('The server did not confirm this recorder installation. The local queue is retained.')
+        return info

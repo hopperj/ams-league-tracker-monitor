@@ -8,9 +8,8 @@ import queue
 import threading
 from types import SimpleNamespace
 
-from .configuration import DEFAULT_SERVER, checked_configuration, connection_values, defaults, load_configuration, save_configuration
+from .configuration import DEFAULT_SERVER, connection_values, defaults, prepare_configuration
 from .engine import run
-from .spool import Spool
 from .status import RecorderStatus, upload_problem
 
 PAPER, INK, MUTED = "#f3f5f4", "#1a222b", "#6d7883"
@@ -94,19 +93,18 @@ class RecorderWindow:
         self.setup_dialog.withdraw()
         self.setup_dialog.title("Recorder setup")
         self.setup_dialog.configure(background=PAPER)
-        self.setup_dialog.geometry("520x435")
-        self.setup_dialog.minsize(470, 435)
+        self.setup_dialog.geometry("520x355")
+        self.setup_dialog.minsize(470, 355)
         self.setup_dialog.transient(root)
         self.setup_dialog.protocol("WM_DELETE_WINDOW", self.hide_setup)
         self.setup_frame = tk.Frame(self.setup_dialog, background=PAPER, padx=22, pady=12)
         self.setup_frame.pack(fill="both", expand=True)
         tk.Label(self.setup_frame, text="RECORDER SETUP", foreground=MUTED, background=PAPER, font=(family, 9, "bold")).pack(anchor="w", pady=(22, 5))
-        tk.Label(self.setup_frame, text="Enter your recorder token. AUTO organizes all driving, including solo practice. An explicit capture code is optional.", foreground=MUTED, background=PAPER, font=(family, 9), wraplength=470, justify="left").pack(anchor="w", pady=(0, 8))
+        tk.Label(self.setup_frame, text="No account or key is needed. Your recorder connects automatically. AUTO records all driving, including solo practice.", foreground=MUTED, background=PAPER, font=(family, 9), wraplength=470, justify="left").pack(anchor="w", pady=(0, 8))
         self.server = tk.StringVar(value=DEFAULT_SERVER)
-        self.token = tk.StringVar()
         self.event_code = tk.StringVar(value="AUTO")
         self.entries = []
-        for label, variable, masked in (("Server address", self.server, False), ("Recorder upload token", self.token, True), ("Capture code (optional)", self.event_code, False)):
+        for label, variable, masked in (("Server address", self.server, False), ("Capture code (optional)", self.event_code, False)):
             tk.Label(self.setup_frame, text=label, foreground=INK, background=PAPER, font=(family, 9)).pack(anchor="w", pady=(6, 3))
             entry = ttk.Entry(self.setup_frame, textvariable=variable, show="*" if masked else "")
             entry.pack(fill="x")
@@ -115,12 +113,10 @@ class RecorderWindow:
         self.save_button.pack(anchor="e", pady=(12, 0))
         self.setup_visible = False
         try:
-            self.config = load_configuration(self.config_path)
+            self.config = prepare_configuration(self.config_path, self.spool_path)
             self.apply_configuration(self.config)
-        except FileNotFoundError:
-            self.toggle_setup()
         except (OSError, ValueError, KeyError, TypeError):
-            self.status.update("fatal", message="Saved setup could not be read. Enter your recorder details again.")
+            self.status.update("fatal", message="Saved setup could not be read. Restore the original config.json so queued data keeps its recorder connection.")
             self.toggle_setup()
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.report_callback_exception = self.callback_error
@@ -130,9 +126,9 @@ class RecorderWindow:
 
     def apply_configuration(self, config):
         self.server.set(config["server"])
-        self.token.set(config["token"])
         self.event_code.set(config["event_code"])
-        self.driver.set(config["driver_name"] + "  ·  " + ("Automatic recording" if config["event_code"]=="AUTO" else config["event_code"]))
+        name = config['driver_name'] if config['driver_name'] != 'Waiting for AMS2' else 'AMS2 recorder'
+        self.driver.set(name + "  ·  " + ("Automatic recording" if config["event_code"]=="AUTO" else config["event_code"]))
 
     def hide_setup(self):
         self.setup_visible = False
@@ -150,26 +146,20 @@ class RecorderWindow:
         if self.worker or self.busy:
             return
         try:
-            values = connection_values(self.server.get(), self.token.get(), self.event_code.get())
+            values = connection_values(self.server.get(), 'automatic', self.event_code.get())
         except ValueError as exc:
             self.status.update("fatal", message=str(exc))
             return
         self.busy = True
         self.cancel_setup.clear()
-        self.status.update("fatal", message="Checking the recorder credentials with your league server…")
+        self.status.update("fatal", message="Saving recorder setup…")
 
         def check():
             try:
-                config = checked_configuration(*values)
+                config = prepare_configuration(self.config_path, self.spool_path, values[0], values[2])
                 if self.cancel_setup.is_set():
                     self.messages.put(("setup_cancelled", None))
                     return
-                queue_file = Spool(self.spool_path)
-                try:
-                    queue_file.bind(config["server"], config["recorder_id"])
-                finally:
-                    queue_file.close()
-                save_configuration(self.config_path, config)
                 self.messages.put(("setup_ok", (config, start_after)))
             except ValueError:
                 self.messages.put(("setup_error", "Check your setup. Saved data must stay with its original recorder and server."))
@@ -186,13 +176,13 @@ class RecorderWindow:
         if self.worker or self.busy or self.closing:
             return
         try:
-            values = connection_values(self.server.get(), self.token.get(), self.event_code.get())
+            values = connection_values(self.server.get(), 'automatic', self.event_code.get())
         except ValueError as exc:
             self.status.update("fatal", message=str(exc))
             if not self.setup_visible:
                 self.toggle_setup()
             return
-        if not self.config or values != (self.config["server"], self.config["token"], self.config["event_code"]):
+        if not self.config or (values[0], values[2]) != (self.config['server'], self.config['event_code']):
             self.save_setup(True)
             return
         if self.setup_visible:
@@ -205,7 +195,12 @@ class RecorderWindow:
 
         def record():
             try:
-                run(args, self.stop_event, self.status.update)
+                def progress(kind, **values):
+                    if kind == 'identity':
+                        self.messages.put(('identity', values['driver_name']))
+                    else:
+                        self.status.update(kind, **values)
+                run(args, self.stop_event, progress)
             except Exception as exc:
                 LOG.error("Recording stopped (%s)", type(exc).__name__)
                 message = "Recording stopped. Check your setup and available disk space."
@@ -254,6 +249,9 @@ class RecorderWindow:
                         self.status.update("fatal", message=value)
                 elif kind == "run_error":
                     self.status.update("fatal", message=value)
+                elif kind == 'identity' and value and value != 'Waiting for AMS2':
+                    self.config['driver_name'] = value
+                    self.apply_configuration(self.config)
                 elif kind == "run_done":
                     self.worker = None
                     self.status.update("stopped")

@@ -20,6 +20,9 @@ class EngineTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.failures = 0
+        self.registration_failures = 0
+        self.registrations = []
+        self.recorder_id = "recorder"
         self.bad_ack = False
         self.accepted = True
         self.ack_extras = {}
@@ -31,10 +34,15 @@ class EngineTest(unittest.TestCase):
             def send(self,status,body):
                 data=json.dumps(body).encode();self.send_response(status);self.send_header("Content-Length",str(len(data)));self.end_headers();self.wfile.write(data)
             def do_GET(self):
-                self.send(200,{"recorder_id":"recorder", "driver_name":"Alex Morgan", "server_time_ms":int(time.time()*1000)})
+                self.send(200,{"recorder_id":owner.recorder_id, "driver_name":"Alex Morgan", "server_time_ms":int(time.time()*1000)})
             def do_POST(self):
                 raw=self.rfile.read(int(self.headers["Content-Length"]))
                 body=json.loads(gzip.decompress(raw))
+                if self.path=='/api/recorders/register':
+                    owner.registrations.append((body,self.headers['Authorization']))
+                    if owner.registration_failures:
+                        owner.registration_failures-=1;self.send(503,{'error':'Temporarily offline'});return
+                    owner.recorder_id=body['recorder_id'];self.send(200,{'recorder_id':owner.recorder_id,'driver_name':'Waiting for AMS2'});return
                 owner.retry_bytes.append(raw)
                 if owner.failures:
                     owner.failures-=1;self.send(503,{"error":"unavailable"});return
@@ -121,6 +129,25 @@ class EngineTest(unittest.TestCase):
         self.assertNotIn('uploaded',events)
         queue=Spool(self.args.spool)
         self.assertEqual(queue.pending(),events.count('captured'));queue.close()
+    def test_new_installation_registers_and_retries_while_capture_stays_queued(self):
+        (self.root/'config.json').unlink();self.registration_failures=1
+        from ams_recorder.configuration import prepare_configuration
+        original=prepare_configuration(self.args.config,self.args.spool,self.base)
+        stop=threading.Event();events=[]
+        self.args.duration=10
+        def progress(kind,**values):
+            events.append(kind)
+            if kind=='uploaded':stop.set()
+        run(self.args,stop,on_event=progress)
+        self.assertIn('upload_error',events);self.assertIn('uploaded',events)
+        self.assertEqual(len(self.registrations),2)
+        self.assertEqual(self.registrations[0],self.registrations[1])
+        self.assertEqual(self.recorder_id,original['recorder_id'])
+        self.assertEqual(prepare_configuration(self.args.config,self.args.spool),original)
+        queue=Spool(self.args.spool)
+        try:self.assertEqual(sum(len(b['frames']) for b in self.received.values())+queue.pending(),events.count('captured'))
+        finally:queue.close()
+
 
 
 if __name__ == "__main__": unittest.main()

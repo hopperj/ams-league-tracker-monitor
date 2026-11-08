@@ -1,10 +1,7 @@
 import argparse
-import getpass
-import json
 import logging
-from pathlib import Path
 
-from .configuration import checked_configuration, defaults, save_configuration
+from .configuration import defaults, prepare_configuration
 from .engine import run
 from .spool import Spool
 from .transport import Transport
@@ -12,10 +9,8 @@ from .status import receipt_notice
 
 
 def configure(args):
-    token = getpass.getpass("Recorder token (from dashboard): ")
-    config = checked_configuration(args.server, token, args.event)
-    save_configuration(args.config, config)
-    print("Configuration saved for %s. Run: python -m ams_recorder run" % config["driver_name"])
+    prepare_configuration(args.config, args.spool, args.server, args.event)
+    print("Recorder setup saved. No account or key is needed. Run: python -m ams_recorder run")
 
 
 def main():
@@ -24,8 +19,9 @@ def main():
     parser.add_argument("--config", default=str(config))
     sub = parser.add_subparsers(dest="command", required=True)
     setup = sub.add_parser("configure")
-    setup.add_argument("--server", required=True)
-    setup.add_argument("--event", default="AUTO", help="AUTO records all driving sessions; an explicit shared capture code remains supported")
+    setup.add_argument("--server", help="League server address; defaults to the saved server or ams2.ioresearch.ca")
+    setup.add_argument("--spool", default=str(spool))
+    setup.add_argument("--event", help="AUTO records all driving sessions; an explicit shared capture code remains supported")
     gui = sub.add_parser("gui", help="Open the recorder window")
     gui.add_argument("--spool", default=str(spool))
     gui.add_argument("--demo", action="store_true")
@@ -58,11 +54,13 @@ def main():
                 options.append("--smoke-test")
             open_window(options)
         elif args.command == "flush":
-            config = json.loads(Path(args.config).read_text())
+            config = prepare_configuration(args.config, args.spool)
             transport = Transport(config["server"], config["token"])
             outgoing = Spool(args.spool)
             try:
                 outgoing.bind(transport.server, config["recorder_id"])
+                if config.get('auto_registration') and outgoing.pending():
+                    transport.register(config['recorder_id'])
                 while outgoing.pending():
                     batch_id, payload = outgoing.batch(config["recorder_id"])
                     ack = transport.request("/api/batches", payload)

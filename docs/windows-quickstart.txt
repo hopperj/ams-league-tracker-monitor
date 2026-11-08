@@ -8,17 +8,16 @@ compilation is required.
 1. Extract this ZIP, then double-click
    AMSLeagueRecorder-Windows-x64-Intel-AMD.exe.
 2. In AMS2, select Options > System > Shared Memory > Project CARS 2.
-3. Enter the recorder upload token supplied by your league administrator.
-   The server detects your AMS2 player name automatically; no name is needed.
-   Keep the capture code as AUTO (or leave it blank) to record all sessions.
-   The server address is prefilled:
-   https://ams2.ioresearch.ca:5443
-4. Choose Save setup & start.
+3. The recorder connects and starts automatically. No account, name, or upload
+   key is needed. The server detects your AMS2 player name from the game.
+4. Setup is optional. The default server is https://ams2.ioresearch.ca:5443.
+   Leave the capture code as AUTO to record all sessions. Existing settings
+   and queued data continue working when upgrading from an older version.
 
 Green / Transmitting means recent AMS2 data has been received by the server.
 Red includes an explanation of what needs attention. Data saved - review means
 the server saved the upload but has processing notes; later uploads continue.
-Open Data received on the league website to review those notes.
+A league administrator can review those notes in Recording diagnostics.
 
 The app remembers your settings and starts recording on future launches.
 AUTO records solo practice and league driving across tracks and cars. The server

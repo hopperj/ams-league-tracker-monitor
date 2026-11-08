@@ -30,7 +30,7 @@ def identity(name, car, car_class):
     return "\x1f".join(unicodedata.normalize("NFC", s).strip() for s in (name, car, car_class))
 
 
-def decode(raw, driver_name):
+def decode(raw, driver_name=None):
     version = struct.unpack_from("<I", raw)[0] if len(raw) >= 4 else None
     result = {"raw_b64": base64.b64encode(raw).decode("ascii"), "memory_version": version,
               "raw_bytes": len(raw), "decoded": False, "participants": [], "telemetry": None}
@@ -78,11 +78,15 @@ def decode(raw, driver_name):
         p["ambiguous"] = duplicates[p["key"]] > 1
     result["participants"] = participants
     viewed = next((p for p in participants if p["slot"] == state.mViewedParticipantIndex), None)
+    automatic = driver_name is None
+    if automatic and viewed:
+        driver_name = viewed['name']
     matches = [p for p in participants if p["name"] == driver_name]
     # Fail closed on duplicates, replay, menu/spectator ambiguity, or mismatched car.
     verified = (state.mGameState == 2 and viewed and len(matches) == 1
                 and viewed["name"] == driver_name and not viewed["ambiguous"]
                 and viewed["car"] == fields["mCarName"]
+                and (not automatic or viewed['active'] and viewed['class'] == fields['mCarClassName'])
                 and isinstance(viewed["speed_mps"], (int, float))
                 and abs(viewed["speed_mps"] - state.mSpeed) < 0.5)
     result["telemetry_verified"] = bool(verified)

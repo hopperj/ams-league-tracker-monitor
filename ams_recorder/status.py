@@ -11,7 +11,7 @@ def upload_problem(error):
         if message:
             return "Upload not saved: " + message
         return {400:"Check the capture code. The server rejected the upload.",
-                401:"Recorder token rejected. Check your setup.",
+                401:"Recorder connection was not recognized. Saved data will retry; contact your league administrator if it continues.",
                 403:"The server refused access. Check the server address.",
                 409:"A queued session is closed or conflicted. Ask your league administrator to review it.",
                 429:"The server is busy. Uploads will retry automatically."}.get(error.code,

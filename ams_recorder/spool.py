@@ -32,11 +32,15 @@ class Spool:
           END;
         """)
 
-    def bind(self, server, recorder_id):
+    def check_destination(self, server, recorder_id):
         destination = server.rstrip("/") + "|" + recorder_id
         row = self.db.execute("SELECT value FROM metadata WHERE key='destination'").fetchone()
         if row and row[0] != destination:
             raise ValueError("This spool belongs to another server/recorder. Use a different --spool directory.")
+        return destination
+
+    def bind(self, server, recorder_id):
+        destination = self.check_destination(server, recorder_id)
         with self.db:
             self.db.execute("INSERT OR IGNORE INTO metadata VALUES('destination',?)", (destination,))
 

@@ -11,7 +11,7 @@ import time
 import urllib.error
 import uuid
 
-from .configuration import load_configuration
+from .configuration import prepare_configuration
 from .decoder import decode
 from .memory import MemoryReader, MemoryUnavailable
 from .spool import Spool
@@ -31,7 +31,8 @@ def run(args, stop_event=None, on_event=None):
             on_event(kind, **values)
 
     try:
-        config = load_configuration(args.config)
+        config = prepare_configuration(args.config, args.spool)
+        capture_name = 'Demo driver' if args.demo and config.get('auto_registration') else config['driver_name']
         transport = Transport(config["server"], config["token"])
         spool = Spool(args.spool)
         spool.bind(transport.server, config["recorder_id"])
@@ -58,14 +59,19 @@ def run(args, stop_event=None, on_event=None):
             try:
                 outgoing = Spool(args.spool)
                 backoff = 1
+                registered = not config.get('auto_registration', False)
                 while not stop.is_set():
                     try:
+                        if not registered:
+                            transport.register(config['recorder_id'])
+                            registered = True
                         if not clock["last_sync"] or time.monotonic() - clock["last_sync"] > 60:
                             offset, uncertainty, info = transport.clock(cancel=stop)
                             if info["recorder_id"] != config["recorder_id"]:
                                 raise ValueError("Recorder configuration no longer matches the server")
                             if isinstance(info.get("driver_name"),str) and info["driver_name"]:
                                 config["driver_name"]=info["driver_name"]
+                                report('identity', driver_name=info['driver_name'])
                             anchor_delta = time.time()*1000 - (anchor_wall + (time.monotonic()-anchor_mono)*1000)
                             clock.update(offset=offset+anchor_delta, uncertainty=uncertainty, last_sync=time.monotonic())
                         batch = outgoing.batch(config["recorder_id"])
@@ -90,6 +96,8 @@ def run(args, stop_event=None, on_event=None):
                         backoff = 1
                         stop.wait(0 if pending >= 120 else args.batch_seconds)
                     except (OSError, ValueError, urllib.error.URLError) as exc:
+                        if isinstance(exc, urllib.error.HTTPError) and exc.code == 401 and config.get('auto_registration'):
+                            registered = False
                         if stop.is_set():
                             break
                         report("upload_error", message=upload_problem(exc), pending=outgoing.pending())
@@ -130,7 +138,7 @@ def run(args, stop_event=None, on_event=None):
                     raise MemoryUnavailable("Local queue is full. Capture will resume when uploads catch up.")
                 if args.demo:
                     from .demo import snapshot
-                    raw, consistent = snapshot(time.monotonic() - start + args.demo_offset, config["driver_name"]), True
+                    raw, consistent = snapshot(time.monotonic() - start + args.demo_offset, capture_name), True
                 elif replay is not None:
                     try:
                         replay_frame = next(replay)
@@ -141,7 +149,8 @@ def run(args, stop_event=None, on_event=None):
                 else:
                     raw, consistent = reader.read()
                 if raw != last_raw:
-                    frame = dict(replay_frame) if replay is not None else decode(raw, config["driver_name"])
+                    frame = dict(replay_frame) if replay is not None else decode(raw,
+                        capture_name if args.demo else None if config.get('auto_registration') else config['driver_name'])
                     if replay is not None:
                         frame["original_captured_at_ms"] = replay_frame.get("captured_at_ms")
                     frame.update(source_kind=frame.get("source_kind","shared_memory"), consistent=consistent,

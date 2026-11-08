@@ -69,7 +69,7 @@ class StatusTest(unittest.TestCase):
     def test_http_failure_messages_never_include_provider_details_or_credentials(self):
         error = urllib.error.HTTPError("https://league.example",401,"secret-token-in-provider-message",{},None)
         message = upload_problem(error)
-        self.assertIn("token rejected",message)
+        self.assertIn("connection was not recognized",message)
         self.assertNotIn("secret-token-in-provider-message",message)
 
     def test_saved_processing_warning_is_distinct_from_a_rejected_upload(self):

@@ -19,7 +19,7 @@ python -m ams_recorder.gui
 
 Or run `python dist/AMSLeagueRecorder-Python-Portable.pyz` with no arguments after packaging. The native Windows `AMSLeagueRecorder-Windows-x64-Intel-AMD.exe` opens the window directly, without a console.
 
-On first launch, the **Recorder setup** window asks for the server address (prefilled with `https://ams2.ioresearch.ca:5443`), the recorder **upload** token, and an optional capture code (leave blank or use **AUTO**). **Save setup & start** verifies the recorder identity and begins capture. The token is masked in the window. Previously saved command-line configuration is reused.
+On first launch, the recorder creates and saves its own installation connection, then starts automatically. **No account, name, or upload key is requested.** The default server is `https://ams2.ioresearch.ca:5443`. **Setup** contains only the server address and an optional capture code (leave blank or use **AUTO**). Existing saved credentials and queued data are reused unchanged.
 
 Later launches start recording automatically with saved settings. **Start recording** and **Stop** remain available. With **AUTO**, driving sessions are organized automatically as practice, qualifying or race, including car/track changes and observed restarts. An administrator can later associate the captured stages with a league night. To switch an existing installation to AUTO, stop, open **Setup**, clear the capture code, then save and start. Queued uploads retain their original destination. Setup runs in the background so the window stays responsive. A saved configuration can start capturing while offline; uploads retry and the light stays red until confirmed delivery resumes.
 
@@ -29,16 +29,17 @@ Stopping or closing the app stops capture and waits for an in-progress request t
 
 ## Connect a recorder
 
-1. Start the server from the `ams-league-tracker-webapp` workspace. Its README covers the local setup.
-2. Sign in to the dashboard and choose **Connect a recorder**.
-3. Create and save the recorder upload token. The webapp asks for no name; it detects the AMS2 player name from live game data. Dashboard sign-in is separate from recorder credentials.
-4. From this workspace, configure the recorder:
+Download the latest Windows executable and open it. The recorder connects automatically and the server identifies the player from live AMS2 data. For another server, open **Setup** and change the address; the server must support automatic registration. There is no website sign-in or manual credential step.
+
+From source, simply run `python -m ams_recorder run` or `python -m ams_recorder.gui`. Optional command-line setup is also available:
 
 ```sh
 python -m ams_recorder configure --server http://127.0.0.1:8787
 ```
 
-Paste the **upload** token at the password prompt. The capture code defaults to **AUTO**; `--event CAPTURE_CODE` remains available for a manually created session. The token authorizes the installation; the updated server associates its recordings with the AMS2 player name automatically. It is stored under `%LOCALAPPDATA%\AMSLeagueRecorder` on Windows, or `~/.local/AMSLeagueRecorder` on other systems.
+The client saves a random installation ID and private upload credential before connecting or recording. Registration is idempotent: retries use that same identity. First-launch recording works offline, with registration and uploads retrying in the background. This credential grants upload access only and is never displayed or logged. It is stored under `%LOCALAPPDATA%\AMSLeagueRecorder` on Windows, or `~/.local/AMSLeagueRecorder` on other systems.
+
+Older configurations retain their existing token and recorder ID. Their queued batches keep their original destination and exact bytes. A missing/corrupt configuration or a different server cannot silently replace the identity associated with an existing queue; restore its original configuration or use a separate configuration and spool for another installation.
 
 In AMS2 choose **Options > System > Shared Memory > Project CARS 2**, then run:
 
@@ -60,7 +61,7 @@ Stop with Ctrl+C. Pending snapshots stay on disk. To drain the queue after stopp
 python -m ams_recorder flush
 ```
 
-The queue resumes automatically on the next recording run as well. A failed upload never causes queued frames to be acknowledged or discarded. A revoked token requires correcting credentials. A closed or unknown session does not block intake: the server saves it with a review note, and the client continues sending later batches. Administrators can reopen or assign those saved captures without requesting a resend.
+The queue resumes automatically on the next recording run as well. A failed upload never causes queued frames to be acknowledged or discarded. A revoked connection shows an explicit error; contact the league administrator. The app keeps the saved queue and does not create a replacement identity to bypass revocation. A closed or unknown session does not block intake: the server saves it with a review note, and the client continues sending later batches. Administrators can reopen or assign those saved captures without requesting a resend.
 
 ## Optional UDP archive
 
@@ -74,9 +75,7 @@ This preserves complete datagrams on port 5606 alongside memory snapshots. UDP p
 
 ## Sessions and identity
 
-All recorders observing the same session use the same capture code. Use a **new code for each practice, qualifying, or race session, including a restarted race**. Codes provide explicit grouping because shared memory does not supply a dependable globally unique race identifier.
-
-To change sessions, stop the recorder and run `configure` with the new code and the same upload token. Old queued batches keep their original code. A spool cannot be retargeted to a different server or recorder identity. Use `--spool` with a different path for another installation or driver.
+Normal recording uses **AUTO**. The server correlates observed sessions and admins select official league nights. For a legacy explicit code, all observers use the same code and a new code is needed for each restarted session. Stop, change the optional capture code in Setup, and resume; queued batches retain their old codes.
 
 Automatic credentials use the game’s unique viewed participant and matching local car/class/speed during live driving. The server can reconstruct personal telemetry from the complete published SDK fields, including uploads from existing recorder executables that withheld their convenience telemetry because of a mismatched setup name. Named legacy credentials continue to require their configured game-name aliases. Spectated, paused, replay, duplicate-name, and unknown-owner data remains in the original capture without being assigned as personal telemetry. This conservative rule may exclude otherwise useful menu/garage telemetry from the comparison graphs.
 
@@ -155,6 +154,6 @@ python -m unittest discover -s tests -v
 
 Tests cover lossless raw capture, layout, ownership, unsupported versions, retry identity, queue recovery, destination binding, and transport URL restrictions. A native mapping integration test runs on Windows and skips elsewhere. The GitHub Actions workflow runs it on Windows.
 
-Additional tests cover the UI indicator, background Start/Stop, missing credentials, stale acknowledgements, queue pressure, exact-byte retry recovery, and rejected acknowledgements retaining all frames. Desktop tests run when a display is available. The Mac native-window check used Python 3.12 with Tk 9; the old system Tk 8.5 is not supported by the UI.
+Additional tests cover the UI indicator, background Start/Stop, automatic offline setup, idempotent registration, legacy queue preservation, stale acknowledgements, queue pressure, exact-byte retry recovery, and rejected acknowledgements retaining all frames. Desktop tests run when a display is available. The Mac native-window check used Python 3.12 with Tk 9; the old system Tk 8.5 is not supported by the UI.
 
 The shared-memory research is in `docs/ams2-data-research.md`. The upload contract is in `docs/protocol-v1.md`.
