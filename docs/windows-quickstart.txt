@@ -9,6 +9,7 @@ compilation is required.
    AMSLeagueRecorder-Windows-x64-Intel-AMD.exe.
 2. In AMS2, select Options > System > Shared Memory > Project CARS 2.
 3. Enter the recorder upload token supplied by your league administrator.
+   The server detects your AMS2 player name automatically; no name is needed.
    Keep the capture code as AUTO (or leave it blank) to record all sessions.
    The server address is prefilled:
    https://ams2.ioresearch.ca:5443

@@ -31,14 +31,14 @@ Stopping or closing the app stops capture and waits for an in-progress request t
 
 1. Start the server from the `ams-league-tracker-webapp` workspace. Its README covers the local setup.
 2. Sign in to the dashboard and choose **Connect a recorder**.
-3. Enter the driver's exact AMS2 display name and save the recorder upload token. Dashboard sign-in is separate from recorder credentials.
+3. Create and save the recorder upload token. The webapp asks for no name; it detects the AMS2 player name from live game data. Dashboard sign-in is separate from recorder credentials.
 4. From this workspace, configure the recorder:
 
 ```sh
 python -m ams_recorder configure --server http://127.0.0.1:8787
 ```
 
-Paste the **upload** token at the password prompt. The capture code defaults to **AUTO**; `--event CAPTURE_CODE` remains available for a manually created session. Configuration associates the installation with the server-issued driver identity. It is stored under `%LOCALAPPDATA%\AMSLeagueRecorder` on Windows, or `~/.local/AMSLeagueRecorder` on other systems.
+Paste the **upload** token at the password prompt. The capture code defaults to **AUTO**; `--event CAPTURE_CODE` remains available for a manually created session. The token authorizes the installation; the updated server associates its recordings with the AMS2 player name automatically. It is stored under `%LOCALAPPDATA%\AMSLeagueRecorder` on Windows, or `~/.local/AMSLeagueRecorder` on other systems.
 
 In AMS2 choose **Options > System > Shared Memory > Project CARS 2**, then run:
 
@@ -78,7 +78,7 @@ All recorders observing the same session use the same capture code. Use a **new 
 
 To change sessions, stop the recorder and run `configure` with the new code and the same upload token. Old queued batches keep their original code. A spool cannot be retargeted to a different server or recorder identity. Use `--spool` with a different path for another installation or driver.
 
-Driver telemetry is indexed only during live driving when the viewed participant uniquely matches the configured name and its car/speed agrees with the single-car telemetry. Spectated, paused, replay, duplicate-name, and unknown-owner data remains in the original capture without being assigned as personal telemetry. This conservative rule may exclude otherwise useful menu/garage telemetry from the comparison graphs.
+Automatic credentials use the game’s unique viewed participant and matching local car/class/speed during live driving. The server can reconstruct personal telemetry from the complete published SDK fields, including uploads from existing recorder executables that withheld their convenience telemetry because of a mismatched setup name. Named legacy credentials continue to require their configured game-name aliases. Spectated, paused, replay, duplicate-name, and unknown-owner data remains in the original capture without being assigned as personal telemetry. This conservative rule may exclude otherwise useful menu/garage telemetry from the comparison graphs.
 
 ## What gets preserved
 
