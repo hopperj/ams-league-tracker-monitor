@@ -35,3 +35,9 @@ python tools/seed_spa_race.py \
 The work directory contains private recorder credentials, atomic per-driver progress files, and `result.json`. Keep it private. Re-run the exact command to resume; deterministic run/batch IDs and retry bytes prevent duplicated samples. The generator refuses to create another event with this scenario's title when its original checkpoint is missing.
 
 `--max-batches 1` is available for a small development smoke run. Remove it to complete all three streams. The generator can also target a loopback backend behind a proxy using `--host-header`; ordinary remote uploads should use the public HTTPS URL.
+
+## Linked qualifying session
+
+The generator also supports `--qualifying --race-checkpoint /private/path/to/race/state.json` with a **different** `--work` directory. It reuses the three race recorder identities and links the new qualifying session to the existing race. Keep checkpoint files private: they contain upload credentials. The qualifying points table is deliberately empty until the administrator configures the league’s rules.
+
+This fictional session begins Thursday November 5 at **20:43 AST**, before the 21:00 race. Each driver completes six laps, including invalidated out/in laps. EPaulD also has an invalid 2:01.200 lap; the best valid times are EPaulD 2:02.000, BootyWiz 2:02.400 and Foote 2:05.000. All SDK fields, full raw mapped regions and driver-owned telemetry are generated at 60 Hz through the same decoder and authenticated ingestion path as the race. Sector arrays contain the most recently completed sectors and reconcile to the completed lap at each line crossing. The session remains open for review and contributes no standings points until configured and closed.

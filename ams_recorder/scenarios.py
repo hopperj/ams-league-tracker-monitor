@@ -186,3 +186,74 @@ class SpaRace:
 
     def sample_count(self,hz=60):
         return int((self.formation_seconds+self.end_seconds)*hz)+1
+
+
+QUALIFYING_START = START.replace(hour=20, minute=43)
+
+
+class SpaQualifying(SpaRace):
+    """Six laps per driver: out/in laps, valid flyers and one invalid fast lap."""
+    formation_seconds = 0
+    tail_seconds = 15
+
+    def __init__(self):
+        super().__init__()
+        times = ((140,125,124.7,123,122.4,150), (141,124,121.2,123.2,122,151), (143,126.5,126,125.5,125,153))
+        for index, (driver, durations) in enumerate(zip(self.drivers, times)):
+            starts = [index * 2.0]
+            for duration in durations:
+                starts.append(starts[-1] + duration)
+            driver.update(durations=list(durations), starts=starts, pit_lap=99, pause=0,
+                          finish_laps=6, finish_time=starts[-1])
+        self.end_seconds = math.ceil(max(d['finish_time'] for d in self.drivers)) + self.tail_seconds
+        self.sector_fractions = (self.times[333]/self.base_time,
+                                (self.times[667]-self.times[333])/self.base_time,
+                                (self.times[-1]-self.times[667])/self.base_time)
+
+    def invalid_lap(self, index, lap):
+        return lap in (1,6) or (index == 1 and lap == 3)
+
+    def progress(self, elapsed, index):
+        p = super().progress(elapsed, index)
+        p['invalid'] = self.invalid_lap(index, p['lap'])
+        p['best'] = min((duration for lap,duration in enumerate(self.drivers[index]['durations'][:p['completed']],1)
+                         if not self.invalid_lap(index,lap)), default=-1)
+        return p
+
+    def snapshot(self, elapsed, observer, sequence):
+        s = SharedMemory.from_buffer_copy(super().snapshot(elapsed, observer, sequence))
+        s.mSessionState = 3
+        s.mLapsInEvent = 0
+        s.mSessionDuration = self.end_seconds
+        s.mEventTimeRemaining = max(0,self.end_seconds-elapsed)
+        standings=sorted(range(3),key=lambda i:(self.progress(elapsed,i)['best']<=0,
+                        self.progress(elapsed,i)['best'] if self.progress(elapsed,i)['best']>0 else 0,i))
+        for slot in range(3):
+            index = (observer+slot)%3
+            s.mParticipantInfo[slot].mRacePosition=standings.index(index)+1
+            p = self.progress(elapsed,index)
+            current = s.mParticipantInfo[slot].mCurrentSector
+            completed = p['completed']
+            previous_duration = self.drivers[index]['durations'][completed-1] if completed else -1
+            for sector,fraction in enumerate(self.sector_fractions,1):
+                # SDK arrays contain the most recently completed sector, which
+                # may be from this lap or the preceding one.
+                duration = p['duration'] if sector <= current and p['state'] != 3 else previous_duration
+                getattr(s,'mCurrentSector%dTimes'%sector)[slot] = duration*fraction if duration>0 else -1
+                clean = [d*fraction for lap,d in enumerate(self.drivers[index]['durations'][:completed],1)
+                         if not self.invalid_lap(index,lap)]
+                getattr(s,'mFastestSector%dTimes'%sector)[slot] = min(clean,default=-1)
+            s.mFastestLapTimes[slot] = p['best']
+        own = self.progress(elapsed,observer)
+        s.mBestLapTime = own['best']
+        s.mPersonalFastestLapTime = own['best']
+        s.mWorldFastestLapTime = min((self.progress(elapsed,i)['best'] for i in range(3)
+                                    if self.progress(elapsed,i)['best']>0),default=-1)
+        for sector in range(1,4):
+            setattr(s,'mCurrentSector%dTime'%sector,getattr(s,'mCurrentSector%dTimes'%sector)[0])
+        return bytes(s).ljust(REGION_BYTES,b'\0')
+
+    def frame(self, sequence, observer, hz=60):
+        frame = super().frame(sequence,observer,hz)
+        frame['captured_at_ms'] += round((QUALIFYING_START-START).total_seconds()*1000)
+        return frame
