@@ -54,7 +54,7 @@ def main():
 
 ## Recorder
 
-Open the recorder: no account, name, or upload key is requested. It registers its installation automatically and identifies the player from AMS2. Existing saved credentials and queued data are preserved. Leave the capture code blank or use **AUTO** to record all driving sessions, including solo practice across different tracks and cars. Existing explicit capture codes remain supported. League-night approval is managed separately on the website. The default server is https://ams2.ioresearch.ca:5443. Enable AMS2's **Shared Memory: Project CARS 2** setting.
+Open the recorder: capture and uploads connect automatically. To link a permanent racer identity, click **Link Steam account**, or sign into the webapp and choose **Download my Windows recorder** for personalized setup. First launch asks for browser approval without copying a key. Game-name changes retain the linked racer identity. It registers its installation automatically and identifies the player from AMS2. Existing saved credentials and queued data are preserved. Leave the capture code blank or use **AUTO** to record all driving sessions, including solo practice across different tracks and cars. Existing explicit capture codes remain supported. League-night approval is managed separately on the website. The default server is https://ams2.ioresearch.ca:5443. Enable AMS2's **Shared Memory: Project CARS 2** setting.
 
 The window shows a red/green delivery light. Failed deliveries stay queued locally; uploads saved with processing notes show **Data saved — review** and continue transmitting.
 

@@ -73,6 +73,12 @@ python -m ams_recorder run --udp
 
 This preserves complete datagrams on port 5606 alongside memory snapshots. UDP payloads are retained with sender address, packet type, and version; they are not decoded into league projections in this release. This avoids inventing offsets for AMS2-specific packet variants. UDP delivery can lose packets, and some companion apps compete for the port. Shared-memory capture continues if the UDP socket cannot bind. If multiple game PCs broadcast on the same network, use `--udp-source GAME_PC_IP` to select the correct sender.
 
+## Steam account connection
+
+The webapp offers **Download my Windows recorder** after Steam sign-in. Extract that personalized ZIP and keep `AMSLeagueRecorder.enroll.json` next to the executable. First launch opens a browser for approval under the intended Steam account. The seven-day, single-use setup token is exchanged for an installation link; a permanent account credential is never placed in the download.
+
+Existing installations and generic downloads use **Link Steam account**. The private recorder ID, upload credential, queued bytes and destination are preserved. Linking runs independently of recording/upload, and a missing, expired or unreadable setup file never blocks capture. Generic updates retain the saved connection. A linked recorder keeps one racer identity across game-name changes; Steam sign-in is not required to collect field observations.
+
 ## Sessions and identity
 
 Normal recording uses **AUTO**. The server correlates observed sessions and admins select official league nights. For a legacy explicit code, all observers use the same code and a new code is needed for each restarted session. Stop, change the optional capture code in Setup, and resume; queued batches retain their old codes.

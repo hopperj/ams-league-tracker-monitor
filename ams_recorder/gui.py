@@ -6,10 +6,12 @@ import os
 from pathlib import Path
 import queue
 import threading
+import webbrowser
 from types import SimpleNamespace
 
 from .configuration import DEFAULT_SERVER, connection_values, defaults, prepare_configuration
 from .engine import run
+from .enrollment import prepare_enrolled, connect as connect_account
 from .status import RecorderStatus, upload_problem
 
 PAPER, INK, MUTED = "#f3f5f4", "#1a222b", "#6d7883"
@@ -28,6 +30,8 @@ class RecorderWindow:
         self.demo = demo
         self.config = None
         self.worker = None
+        self.link_thread = None
+        self.link_cancel = threading.Event()
         self.busy = False
         self.closing = False
         self.failed = False
@@ -37,8 +41,8 @@ class RecorderWindow:
         self.status = RecorderStatus()
         root.title("AMS League Recorder" + (" — DEMO" if demo else ""))
         root.configure(background=PAPER)
-        root.minsize(470, 420)
-        root.geometry("540x470")
+        root.minsize(470, 500)
+        root.geometry("540x550")
         family = font.nametofont("TkDefaultFont").actual("family")
         self.family = family
         root.option_add("*Font", (family, 11))
@@ -62,6 +66,10 @@ class RecorderWindow:
         tk.Label(identity, textvariable=self.driver, foreground=INK, background=PAPER, anchor="w", justify="left", wraplength=330, font=(family, 11, "bold")).grid(row=0, column=0, sticky="ew")
         self.settings_button = ttk.Button(identity, text="Setup", command=self.toggle_setup)
         self.settings_button.grid(row=0, column=1, padx=(12, 0))
+        account_row=tk.Frame(body,background=PAPER);account_row.pack(fill="x",pady=(0,12))
+        self.account_label=tk.StringVar(value="Steam account not linked · recording still works")
+        tk.Label(account_row,textvariable=self.account_label,background=PAPER,foreground=MUTED,font=(family,9),wraplength=310,anchor="w",justify="left").pack(side="left",fill="x",expand=True)
+        self.link_button=ttk.Button(account_row,text="Link Steam account",command=self.link_account);self.link_button.pack(side="right")
         card = tk.Frame(body, background="white", highlightbackground="#dde2e5", highlightthickness=1, padx=15, pady=20)
         card.pack(fill="x")
         card.columnconfigure(1, weight=1)
@@ -100,7 +108,7 @@ class RecorderWindow:
         self.setup_frame = tk.Frame(self.setup_dialog, background=PAPER, padx=22, pady=12)
         self.setup_frame.pack(fill="both", expand=True)
         tk.Label(self.setup_frame, text="RECORDER SETUP", foreground=MUTED, background=PAPER, font=(family, 9, "bold")).pack(anchor="w", pady=(22, 5))
-        tk.Label(self.setup_frame, text="No account or key is needed. Your recorder connects automatically. AUTO records all driving, including solo practice.", foreground=MUTED, background=PAPER, font=(family, 9), wraplength=470, justify="left").pack(anchor="w", pady=(0, 8))
+        tk.Label(self.setup_frame, text="Recording connects automatically. Link Steam once to keep your racer identity across name changes. AUTO records all driving, including solo practice.", foreground=MUTED, background=PAPER, font=(family, 9), wraplength=470, justify="left").pack(anchor="w", pady=(0, 8))
         self.server = tk.StringVar(value=DEFAULT_SERVER)
         self.event_code = tk.StringVar(value="AUTO")
         self.entries = []
@@ -113,8 +121,9 @@ class RecorderWindow:
         self.save_button.pack(anchor="e", pady=(12, 0))
         self.setup_visible = False
         try:
-            self.config = prepare_configuration(self.config_path, self.spool_path)
+            self.config, enrollment_notice = prepare_enrolled(self.config_path, self.spool_path)
             self.apply_configuration(self.config)
+            if enrollment_notice:self.account_label.set(enrollment_notice)
         except (OSError, ValueError, KeyError, TypeError):
             self.status.update("fatal", message="Saved setup could not be read. Restore the original config.json so queued data keeps its recorder connection.")
             self.toggle_setup()
@@ -123,8 +132,18 @@ class RecorderWindow:
         self.poll()
         if self.config and auto_start:
             root.after(150, self.start)
+            if self.config.get("enrollment_token"):root.after(500,self.link_account)
+
+    def link_account(self):
+        if self.closing or not self.config or self.link_thread and self.link_thread.is_alive():return
+        self.link_cancel.clear();self.link_button.configure(state="disabled")
+        def work():
+            try:connect_account(self.config_path,self.link_cancel,lambda kind,value:self.messages.put((kind,value)))
+            finally:self.messages.put(('link_done',None))
+        self.link_thread=threading.Thread(target=work,name="steam-account",daemon=True);self.link_thread.start()
 
     def apply_configuration(self, config):
+        if config.get("account_linked"):self.account_label.set("Linked to: "+config.get("account_name","Steam racer"))
         self.server.set(config["server"])
         self.event_code.set(config["event_code"])
         name = config['driver_name'] if config['driver_name'] != 'Waiting for AMS2' else 'AMS2 recorder'
@@ -221,8 +240,9 @@ class RecorderWindow:
 
     def close(self):
         self.closing = True
+        self.link_cancel.set()
         self.stop()
-        if not self.worker:
+        if not self.worker and not (self.link_thread and self.link_thread.is_alive()):
             self.root.destroy()
 
     def callback_error(self, kind, error, traceback):
@@ -235,7 +255,15 @@ class RecorderWindow:
         try:
             while True:
                 kind, value = self.messages.get_nowait()
-                if kind == "setup_ok":
+                if kind == 'open_browser':
+                    webbrowser.open(value)
+                elif kind == 'link_status':
+                    self.account_label.set(value)
+                elif kind == 'link_complete':
+                    self.config=value;self.apply_configuration(value)
+                elif kind == 'link_done':
+                    self.link_thread=None;self.link_button.configure(state="normal")
+                elif kind == "setup_ok":
                     self.worker, self.busy = None, False
                     self.config, start_after = value
                     self.apply_configuration(self.config)
@@ -257,7 +285,7 @@ class RecorderWindow:
                     self.status.update("stopped")
         except queue.Empty:
             pass
-        if self.closing and not self.worker:
+        if self.closing and not self.worker and not (self.link_thread and self.link_thread.is_alive()):
             self.root.destroy()
             return
         state = self.status.snapshot()
