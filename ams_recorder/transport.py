@@ -1,4 +1,5 @@
 import json
+import secrets
 import time
 import gzip
 import urllib.parse
@@ -36,6 +37,8 @@ class Transport:
                 if isinstance(message,str):
                     message=message.replace(self.token,"[redacted]") if self.token else message
                     error.server_message=" ".join(message.split())[:400]
+                if isinstance(detail, dict):
+                    error.server_code = detail.get('code')
             except (ValueError,TypeError,OSError):
                 pass
             finally:
@@ -46,6 +49,21 @@ class Transport:
             if not isinstance(result, dict):
                 raise ValueError("The server returned an unexpected response")
             return result
+
+    def health(self, recorder_id):
+        """Exercise authenticated gzip POST intake and a committed storage write."""
+        nonce = secrets.token_urlsafe(24)
+        payload = gzip.compress(json.dumps({'nonce': nonce}).encode(), mtime=0)
+        try:
+            result = self.request('/api/recorder/health', payload)
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                error.server_message = 'The server needs an update for Steam-linked recorder health checks. Recording is paused.'
+            raise
+        if (result.get('nonce') != nonce or result.get('recorder_id') != recorder_id
+                or result.get('upload_ready') is not True or result.get('account_linked') is not True):
+            raise ValueError('The server did not confirm linked recorder upload access')
+        return result
 
     def clock(self, cancel=None):
         samples = []

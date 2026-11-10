@@ -10,7 +10,7 @@ from .status import receipt_notice
 
 def configure(args):
     prepare_configuration(args.config, args.spool, args.server, args.event)
-    print("Recorder setup saved. No account or key is needed. Run: python -m ams_recorder run")
+    print("Recorder setup saved. Open the recorder window and use Link Steam account before recording.")
 
 
 def main():
@@ -61,6 +61,8 @@ def main():
                 outgoing.bind(transport.server, config["recorder_id"])
                 if config.get('auto_registration') and outgoing.pending():
                     transport.register(config['recorder_id'])
+                if outgoing.pending():
+                    transport.health(config['recorder_id'])
                 while outgoing.pending():
                     batch_id, payload = outgoing.batch(config["recorder_id"])
                     ack = transport.request("/api/batches", payload)

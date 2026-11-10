@@ -8,8 +8,10 @@ The Windows executable build bundles Python and the graphical toolkit for driver
 
 The recorder now has a small desktop window with one large status light and a short explanation:
 
-- **Green / Transmitting:** AMS2 is producing supported, consistent live-session data and the server has recently acknowledged a batch. A successful connection alone does not turn it green.
-- **Red:** recording is stopped, game data is unavailable/stale, an upload is failing, credentials were rejected, the format is unsupported, or the queue is catching up. **Data saved — review** means delivery succeeded but the server flagged processing notes; uploading continues. The text explains the condition.
+- **Green / Comms open, awaiting race data:** the server confirmed the recorder's Steam link, upload permission and a committed storage write. No live driving data is arriving yet.
+- **Red / Recording in progress:** live AMS2 data is being recorded and sent. Red is reserved for normal recording.
+- **Amber / Needs attention:** linking, communication, capture, upload or queue problems need attention. The message explains the cause; queued data is retained. **Data saved — review** means delivery succeeded with processing notes.
+- **Gray:** checking the connection, stopping or stopped. Every color has an explicit text status.
 
 Open the UI from source:
 
@@ -19,17 +21,17 @@ python -m ams_recorder.gui
 
 Or run `python dist/AMSLeagueRecorder-Python-Portable.pyz` with no arguments after packaging. The native Windows `AMSLeagueRecorder-Windows-x64-Intel-AMD.exe` opens the window directly, without a console.
 
-On first launch, the recorder creates and saves its own installation connection, then starts automatically. **No account, name, or upload key is requested.** The default server is `https://ams2.ioresearch.ca:5443`. **Setup** contains only the server address and an optional capture code (leave blank or use **AUTO**). Existing saved credentials and queued data are reused unchanged.
+On first launch, the recorder saves its installation connection and opens the browser for Steam sign-in and recorder approval. **Recording and uploads require an enabled, linked Steam account.** No upload key is copied manually. The default server is `https://ams2.ioresearch.ca:5443`. **Setup** contains only the server address and an optional capture code (leave blank or use **AUTO**). Existing credentials and queued data are preserved.
 
-Later launches start recording automatically with saved settings. **Start recording** and **Stop** remain available. With **AUTO**, driving sessions are organized automatically as practice, qualifying or race, including car/track changes and observed restarts. An administrator can later associate the captured stages with a league night. To switch an existing installation to AUTO, stop, open **Setup**, clear the capture code, then save and start. Queued uploads retain their original destination. Setup runs in the background so the window stays responsive. A saved configuration can start capturing while offline; uploads retry and the light stays red until confirmed delivery resumes.
+Later launches verify the saved connection with the server before capturing. **Start recording** and **Stop** remain available. With **AUTO**, practice, qualifying, races, track/car changes and restarts are organized automatically. Administrators separately associate stages with league nights. Setup and linking run in the background. A new run waits for server verification, even with a cached link. If communication fails after verification, capture can continue into the durable queue while the light shows amber. A denied or removed link pauses capture; reconnecting resumes it.
 
-The window shows the age of the last upload and the queued sample count at the uploader's latest check. With default settings, an upload or capture older than 10 seconds turns the light red; more than 240 queued samples shows a catch-up condition. Green indicates data delivery, not an official result or guaranteed completeness of every telemetry channel.
+The window shows communication/upload ages and the queued sample count. An authenticated gzip POST to `/api/recorder/health` runs every five seconds, including while AMS2 is closed. The endpoint checks the same permissions as uploads, commits one bounded heartbeat row per recorder and echoes a fresh challenge; it creates no recordings. Stale checks turn amber. A successful probe cannot clear a failed data upload; its batch must be acknowledged. Green indicates upload readiness, not an official result or guaranteed telemetry completeness.
 
 Stopping or closing the app stops capture and waits for an in-progress request to finish. Remaining samples are retained locally and resume uploading on the next start. The window stays responsive while stopping. Logs rotate in `recorder.log` alongside the configuration, with two 1 MB backups; credentials are not logged.
 
 ## Connect a recorder
 
-Download the latest Windows executable and open it. The recorder connects automatically and the server identifies the player from live AMS2 data. For another server, open **Setup** and change the address; the server must support automatic registration. There is no website sign-in or manual credential step.
+Download the latest Windows executable, open it, and approve **Link Steam account** in your browser. Once the server confirms the link, the recorder waits for AMS2 driving data. For another server, change **Setup**; the server must support registration, Steam linking and recorder health checks.
 
 From source, simply run `python -m ams_recorder run` or `python -m ams_recorder.gui`. Optional command-line setup is also available:
 
@@ -37,7 +39,7 @@ From source, simply run `python -m ams_recorder run` or `python -m ams_recorder.
 python -m ams_recorder configure --server http://127.0.0.1:8787
 ```
 
-The client saves a random installation ID and private upload credential before connecting or recording. Registration is idempotent: retries use that same identity. First-launch recording works offline, with registration and uploads retrying in the background. This credential grants upload access only and is never displayed or logged. It is stored under `%LOCALAPPDATA%\AMSLeagueRecorder` on Windows, or `~/.local/AMSLeagueRecorder` on other systems.
+The client saves a random installation ID and private credential before connecting. Registration is idempotent and grants access to the linking flow. Capture and upload wait for server-confirmed Steam approval. The credential is never displayed or logged. Settings are under `%LOCALAPPDATA%\AMSLeagueRecorder` on Windows, or `~/.local/AMSLeagueRecorder` on other systems.
 
 Older configurations retain their existing token and recorder ID. Their queued batches keep their original destination and exact bytes. A missing/corrupt configuration or a different server cannot silently replace the identity associated with an existing queue; restore its original configuration or use a separate configuration and spool for another installation.
 
@@ -75,9 +77,9 @@ This preserves complete datagrams on port 5606 alongside memory snapshots. UDP p
 
 ## Steam account connection
 
-The webapp offers **Download my Windows recorder** after Steam sign-in. Extract that personalized ZIP and keep `AMSLeagueRecorder.enroll.json` next to the executable. First launch opens a browser for approval under the intended Steam account. The seven-day, single-use setup token is exchanged for an installation link; a permanent account credential is never placed in the download.
+The webapp offers **Download my Windows recorder** after Steam sign-in. Extract that personalized ZIP and keep `AMSLeagueRecorder.enroll.json` next to the executable. First launch opens a browser for approval under the intended Steam account. The single-use setup token has no time limit and is exchanged for an installation link; a permanent account credential is never placed in the download. The server controls setup validity, so recorder v0.4 already supports non-expiring setup files.
 
-Existing installations and generic downloads use **Link Steam account**. The private recorder ID, upload credential, queued bytes and destination are preserved. Linking runs independently of recording/upload, and a missing, expired or unreadable setup file never blocks capture. Generic updates retain the saved connection. A linked recorder keeps one racer identity across game-name changes; Steam sign-in is not required to collect field observations.
+Existing installations and generic GitHub downloads use **Link Steam account**. Sign in through Steam, then approve the recorder. Browser approval links last 20 minutes; click **Link Steam account** again if one expires. The approved installation link has no time limit, and game-name changes retain the same racer identity. Missing or unreadable setup files direct you to manual browser approval. Capture stays paused until the server confirms the link. Updates preserve credentials, queued bytes and destination.
 
 ## Sessions and identity
 

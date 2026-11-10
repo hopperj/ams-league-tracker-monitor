@@ -1,4 +1,4 @@
-"""One-time web enrollment, independent of capture and the durable upload queue."""
+"""Steam approval before recording, preserving existing credentials and queues."""
 import gzip
 import hashlib
 import json
@@ -32,7 +32,7 @@ def prepare_enrolled(config_path,spool_path,setup_path=None):
     """A download may select a fresh destination, never retarget an existing queue."""
     notice=None
     try:setup=read_enrollment(setup_path or enrollment_path())
-    except (OSError,ValueError,TypeError):setup=None;notice='Personalized setup could not be read. Recording continues; use Link Steam account.'
+    except (OSError,ValueError,TypeError):setup=None;notice='Personalized setup could not be read. Use Link Steam account before recording.'
     server=setup['server'] if setup and not Path(config_path).exists() else None
     config=prepare_configuration(config_path,spool_path,server=server)
     if setup and not config.get('account_linked'):
@@ -45,7 +45,7 @@ def prepare_enrolled(config_path,spool_path,setup_path=None):
 
 
 def connect(config_path,cancel,notify):
-    """Notify on a worker thread. Capture/upload keeps running throughout linking."""
+    """Notify on a worker thread while capture waits for server approval."""
     config=load_configuration(config_path);transport=Transport(config['server'],config['token'])
     payload=lambda body:gzip.compress(json.dumps(body).encode(),mtime=0)
     backoff=1;pairing=None;enrollment=config.get('enrollment_token');fallback=False
@@ -60,7 +60,7 @@ def connect(config_path,cancel,notify):
                     if not isinstance(pairing,str) or not re.fullmatch(r'[A-Za-z0-9_-]{43,128}',pairing) or url!=transport.server+'/#connect-recorder/'+pairing:
                         raise ValueError('Unexpected recorder approval address')
                     notify('open_browser',url)
-                    notify('link_status','Approve this recorder in your browser. Recording continues.')
+                    notify('link_status','Approve this recorder in your browser to enable recording.')
                 else:pairing=None
             else:
                 result=transport.request('/api/recorders/link/status?pairing_id='+pairing)
@@ -76,13 +76,13 @@ def connect(config_path,cancel,notify):
             if enrollment and error.code==400 and not fallback:
                 enrollment=None;fallback=True;pairing=None
                 notify('link_status','Personalized setup was used or expired. Sign in to connect this recorder.');continue
-            message=getattr(error,'server_message','Steam connection is unavailable. Recording continues; try again shortly.')
+            message=getattr(error,'server_message','Steam connection is unavailable. Recording is paused; try again shortly.')
             notify('link_status',message)
             if error.code in (400,401,403,404,409):return
             if cancel.wait(backoff):return
             backoff=min(backoff*2,30)
         except (OSError,ValueError) as error:
-            # Never display bearer/enrollment secrets or interrupt recording.
-            notify('link_status','Account connection unavailable. Recording continues; retrying…')
+            # Never display bearer/enrollment secrets.
+            notify('link_status','Account connection unavailable. Recording is paused; retrying…')
             if cancel.wait(backoff):return
             backoff=min(backoff*2,30)

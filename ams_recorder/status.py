@@ -1,4 +1,4 @@
-"""Thread-safe status based on captured frames and committed server acknowledgements."""
+"""Separate communication readiness, active recording, and errors."""
 from dataclasses import dataclass
 import threading
 import time
@@ -37,11 +37,16 @@ def receipt_notice(response):
 
 @dataclass(frozen=True)
 class Indicator:
-    green: bool
+    color: str
     title: str
     detail: str
     pending: int
     last_upload_seconds: object
+    last_comms_seconds: object
+
+    @property
+    def green(self):
+        return self.color == 'green'
 
 
 class RecorderStatus:
@@ -55,9 +60,12 @@ class RecorderStatus:
         self.capture_error = None
         self.capture_reason = None
         self.upload_error = None
+        self.comms_error = None
+        self.link_required = False
         self.server_notice = None
         self.last_capture = None
         self.last_upload = None
+        self.last_comms = None
         self.pending = 0
 
     def update(self, kind, **values):
@@ -66,10 +74,13 @@ class RecorderStatus:
             if kind == "started":
                 self.mode = "recording"
                 self.problem = self.capture_error = self.capture_reason = self.upload_error = None
+                self.comms_error = None
+                self.link_required = False
+                self.last_comms = None
                 self.last_capture = self.last_upload = None
                 self.server_notice = None
             elif kind == "captured":
-                self.last_capture = at
+                self.last_capture = None
                 self.capture_error = None
                 if not values.get("decoded"):
                     self.capture_reason = "AMS2 data format is unsupported. Raw data is being saved."
@@ -78,11 +89,25 @@ class RecorderStatus:
                 elif values.get("replay"):
                     self.capture_reason = "Replay data is being archived; live race recording is not active."
                 elif values.get("game_state") not in (2, 4):
-                    self.capture_reason = "Waiting for an AMS2 driving session."
+                    self.capture_reason = None
                 else:
                     self.capture_reason = None
+                    self.last_capture = at
             elif kind == "capture_wait":
-                self.capture_error = values["message"]
+                self.capture_error = None if values.get('waiting') else values['message']
+                if values.get('waiting'):
+                    self.capture_reason = None
+                self.last_capture = None
+            elif kind == 'comms_ok':
+                self.last_comms = at
+                self.comms_error = None
+                self.link_required = False
+            elif kind == 'comms_error':
+                self.comms_error = values['message']
+            elif kind == 'link_required':
+                self.link_required = True
+                self.comms_error = values['message']
+                self.last_capture = None
             elif kind == "uploaded":
                 self.last_upload = at
                 self.upload_error = None
@@ -102,37 +127,53 @@ class RecorderStatus:
         with self.lock:
             now = self.clock()
             age = None if self.last_upload is None else max(0, int(now - self.last_upload))
-            title, green = "Not transmitting", False
+            comms_age = None if self.last_comms is None else max(0, int(now - self.last_comms))
+            title, color = "Recorder error", 'amber'
             if self.problem:
                 detail = self.problem
             elif self.mode == "stopping":
+                color = 'gray'
                 title, detail = "Stopping", "Finishing the current request. Queued data stays saved."
             elif self.mode == "idle":
+                color = 'gray'
                 title = "Not recording"
                 detail = "Press Start recording when you are ready."
                 if self.pending:
                     detail = "Queued data is saved. Start recording again to resume uploads."
                 elif self.server_notice:
                     detail = self.server_notice
+            elif self.link_required:
+                title, detail = 'Steam link required', self.comms_error
             elif self.upload_error:
+                title = 'Upload problem'
                 detail = self.upload_error
+            elif self.comms_error:
+                title, detail = 'Connection problem', self.comms_error
+            elif self.last_comms is None:
+                color, title = 'gray', 'Checking connection'
+                detail = 'Verifying Steam link and upload access with the league server.'
+            elif now - self.last_comms > self.fresh_seconds:
+                title, detail = 'Connection problem', 'Upload access has not been confirmed recently. Retrying the connection.'
             elif self.server_notice:
                 title,detail="Data saved — review",self.server_notice
             elif self.capture_error:
+                title = 'Capture problem'
                 detail = self.capture_error
             elif self.capture_reason:
+                title = 'Capture problem'
                 detail = self.capture_reason
-            elif self.last_capture is None:
-                detail = "Waiting for AMS2. Enable Shared Memory: Project CARS 2."
-            elif now - self.last_capture > self.fresh_seconds:
-                detail = "Waiting for new AMS2 data. Resume your driving session."
-            elif self.last_upload is None:
-                detail = "Waiting for the server to confirm the first upload."
-            elif now - self.last_upload > self.fresh_seconds:
+            elif self.pending and self.last_upload is not None and now - self.last_upload > self.fresh_seconds:
+                title = 'Upload problem'
                 detail = "No recent upload confirmation. Check the connection; data stays saved."
             elif self.pending > self.max_pending:
+                title = 'Catching up on saved data'
                 detail = "Catching up on saved data. Keep the recorder running."
+            elif self.last_capture is not None and now - self.last_capture <= self.fresh_seconds:
+                color, title = 'red', 'Recording in progress'
+                detail = 'Race data is being recorded and sent to the league server.'
+                if self.last_upload is None:
+                    detail = 'Race data is saved locally; awaiting the first upload confirmation.'
             else:
-                green, title = True, "Transmitting"
-                detail = "AMS2 data is being received by the league server."
-            return Indicator(green, title, detail, self.pending, age)
+                color, title = 'green', 'Comms open, awaiting race data'
+                detail = 'Steam account linked. Upload access verified. Waiting for an AMS2 driving session.'
+            return Indicator(color, title, detail, self.pending, age, comms_age)
