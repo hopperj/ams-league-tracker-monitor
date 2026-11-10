@@ -8,10 +8,6 @@ from ams_recorder.schema import SharedMemory
 
 SERVICE_IDENTITIES = (
     ("Safety Car  (AI)", "BMW M3 Safety Car", "SafetyCar"),
-    ("Safety Car  (AI)", "", ""),
-    ("Safety Car", "Porsche 911 GT3 R", "GT3 Gen2"),
-    ("  sAfEtY_cAr  ", "Porsche 911 GT3 R", "GT3 Gen2"),
-    ("Pace Car", "Porsche 911 GT3 R", "GT3 Gen2"),
     ("Game service", "Chevrolet Camaro", "SafetyCar"),
     ("Game service", "Chevrolet Camaro Safety Car", "Road"),
 )
@@ -58,3 +54,8 @@ class SafetyCarTest(unittest.TestCase):
         self.assertEqual(len(result["participants"]), 6)
         self.assertEqual(result["participants"][0]["name"], "Safety Carl")
         self.assertTrue(result["telemetry_verified"])
+
+    def test_racer_names_alone_cannot_hide_a_competitor(self):
+        for name in ('Safety Car', 'Pace Car', 'Safety Car (AI)'):
+            result = decode(bytes(self.state((name, 'Chevrolet Camaro', 'Road'))))
+            self.assertEqual(len(result['participants']), 6)

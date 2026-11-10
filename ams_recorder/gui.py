@@ -1,4 +1,4 @@
-"""A small desktop recorder with an acknowledgement-based red/green indicator."""
+"""Steam-linked recording with distinct ready, recording, and error indicators."""
 import argparse
 import logging
 from logging.handlers import RotatingFileHandler
@@ -6,14 +6,18 @@ import os
 from pathlib import Path
 import queue
 import threading
+import webbrowser
 from types import SimpleNamespace
 
 from .configuration import DEFAULT_SERVER, connection_values, defaults, prepare_configuration
 from .engine import run
+from .enrollment import prepare_enrolled, connect as connect_account
 from .status import RecorderStatus, upload_problem
 
 PAPER, INK, MUTED = "#f3f5f4", "#1a222b", "#6d7883"
 RED, GREEN, ORANGE = "#c7423a", "#27835b", "#e45c2b"
+AMBER, GRAY = '#b57800', '#7c8792'
+LIGHT_COLORS = {'red': RED, 'green': GREEN, 'amber': AMBER, 'gray': GRAY}
 LOG = logging.getLogger("ams-recorder")
 
 
@@ -28,6 +32,9 @@ class RecorderWindow:
         self.demo = demo
         self.config = None
         self.worker = None
+        self.link_thread = None
+        self.auto_link_attempted = False
+        self.link_cancel = threading.Event()
         self.busy = False
         self.closing = False
         self.failed = False
@@ -37,8 +44,8 @@ class RecorderWindow:
         self.status = RecorderStatus()
         root.title("AMS League Recorder" + (" — DEMO" if demo else ""))
         root.configure(background=PAPER)
-        root.minsize(470, 420)
-        root.geometry("540x470")
+        root.minsize(470, 500)
+        root.geometry("540x550")
         family = font.nametofont("TkDefaultFont").actual("family")
         self.family = family
         root.option_add("*Font", (family, 11))
@@ -62,19 +69,30 @@ class RecorderWindow:
         tk.Label(identity, textvariable=self.driver, foreground=INK, background=PAPER, anchor="w", justify="left", wraplength=330, font=(family, 11, "bold")).grid(row=0, column=0, sticky="ew")
         self.settings_button = ttk.Button(identity, text="Setup", command=self.toggle_setup)
         self.settings_button.grid(row=0, column=1, padx=(12, 0))
+        account_row=tk.Frame(body,background=PAPER);account_row.pack(fill="x",pady=(0,12))
+        self.account_label=tk.StringVar(value="Link Steam to enable recording")
+        tk.Label(account_row,textvariable=self.account_label,background=PAPER,foreground=MUTED,font=(family,9),wraplength=310,anchor="w",justify="left").pack(side="left",fill="x",expand=True)
+        self.link_button=ttk.Button(account_row,text="Link Steam account",command=self.link_account);self.link_button.pack(side="right")
         card = tk.Frame(body, background="white", highlightbackground="#dde2e5", highlightthickness=1, padx=15, pady=20)
         card.pack(fill="x")
         card.columnconfigure(1, weight=1)
         self.light = tk.Canvas(card, width=78, height=82, background="white", highlightthickness=0)
         self.light.grid(row=0, column=0, rowspan=2, padx=(0, 12))
-        self.bulb = self.light.create_oval(10, 12, 68, 70, fill=RED, outline="")
+        self.bulb = self.light.create_oval(10, 12, 68, 70, fill=GRAY, outline="")
         self.light.create_oval(23, 21, 37, 32, fill="#ffffff", outline="", stipple="gray75")
         self.title = tk.StringVar(value="Not recording")
         self.detail = tk.StringVar()
-        tk.Label(card, textvariable=self.title, background="white", foreground=INK, font=(family, 21, "bold"), anchor="w").grid(row=0, column=1, sticky="ew")
+        self.title_label = tk.Label(card, textvariable=self.title, background="white", foreground=INK, font=(family, 17, "bold"), anchor="w", justify='left', wraplength=315)
+        self.title_label.grid(row=0, column=1, sticky="ew")
         self.detail_label = tk.Label(card, textvariable=self.detail, background="white", foreground=MUTED, font=(family, 10), justify="left", anchor="w", wraplength=315)
         self.detail_label.grid(row=1, column=1, sticky="ew", pady=(8, 0))
-        card.bind("<Configure>", lambda event: self.detail_label.configure(wraplength=max(200, event.width - 130)))
+        def resize_status(event):
+            width = max(150, event.width - 130)
+            self.detail_label.configure(wraplength=width)
+            self.title_label.configure(wraplength=width)
+        card.bind("<Configure>", resize_status)
+        tk.Label(body, text='Green: ready  ·  Red: recording  ·  Amber: needs attention',
+                 foreground=MUTED, background=PAPER, font=(family, 9)).pack(anchor='w', pady=(8, 0))
         metrics = tk.Frame(body, background=PAPER)
         metrics.pack(fill="x", pady=(11, 15))
         self.last_upload = tk.StringVar(value="Last upload: —")
@@ -100,7 +118,7 @@ class RecorderWindow:
         self.setup_frame = tk.Frame(self.setup_dialog, background=PAPER, padx=22, pady=12)
         self.setup_frame.pack(fill="both", expand=True)
         tk.Label(self.setup_frame, text="RECORDER SETUP", foreground=MUTED, background=PAPER, font=(family, 9, "bold")).pack(anchor="w", pady=(22, 5))
-        tk.Label(self.setup_frame, text="No account or key is needed. Your recorder connects automatically. AUTO records all driving, including solo practice.", foreground=MUTED, background=PAPER, font=(family, 9), wraplength=470, justify="left").pack(anchor="w", pady=(0, 8))
+        tk.Label(self.setup_frame, text="Link Steam and approve this recorder before recording. AUTO records all driving, including solo practice. The connection is checked while waiting for race data.", foreground=MUTED, background=PAPER, font=(family, 9), wraplength=470, justify="left").pack(anchor="w", pady=(0, 8))
         self.server = tk.StringVar(value=DEFAULT_SERVER)
         self.event_code = tk.StringVar(value="AUTO")
         self.entries = []
@@ -113,8 +131,9 @@ class RecorderWindow:
         self.save_button.pack(anchor="e", pady=(12, 0))
         self.setup_visible = False
         try:
-            self.config = prepare_configuration(self.config_path, self.spool_path)
+            self.config, enrollment_notice = prepare_enrolled(self.config_path, self.spool_path)
             self.apply_configuration(self.config)
+            if enrollment_notice:self.account_label.set(enrollment_notice)
         except (OSError, ValueError, KeyError, TypeError):
             self.status.update("fatal", message="Saved setup could not be read. Restore the original config.json so queued data keeps its recorder connection.")
             self.toggle_setup()
@@ -123,8 +142,19 @@ class RecorderWindow:
         self.poll()
         if self.config and auto_start:
             root.after(150, self.start)
+            if not self.config.get('account_linked'):root.after(500,self.link_account)
+
+    def link_account(self):
+        if self.closing or not self.config or self.link_thread and self.link_thread.is_alive():return
+        self.auto_link_attempted = True
+        self.link_cancel.clear();self.link_button.configure(state="disabled")
+        def work():
+            try:connect_account(self.config_path,self.link_cancel,lambda kind,value:self.messages.put((kind,value)))
+            finally:self.messages.put(('link_done',None))
+        self.link_thread=threading.Thread(target=work,name="steam-account",daemon=True);self.link_thread.start()
 
     def apply_configuration(self, config):
+        if config.get("account_linked"):self.account_label.set("Linked to: "+config.get("account_name","Steam racer"))
         self.server.set(config["server"])
         self.event_code.set(config["event_code"])
         name = config['driver_name'] if config['driver_name'] != 'Waiting for AMS2' else 'AMS2 recorder'
@@ -200,6 +230,10 @@ class RecorderWindow:
                         self.messages.put(('identity', values['driver_name']))
                     else:
                         self.status.update(kind, **values)
+                        if kind == 'link_required':
+                            self.messages.put(('link_required', None))
+                        elif kind == 'comms_ok':
+                            self.messages.put(('account_verified', values.get('account_name')))
                 run(args, self.stop_event, progress)
             except Exception as exc:
                 LOG.error("Recording stopped (%s)", type(exc).__name__)
@@ -221,8 +255,9 @@ class RecorderWindow:
 
     def close(self):
         self.closing = True
+        self.link_cancel.set()
         self.stop()
-        if not self.worker:
+        if not self.worker and not (self.link_thread and self.link_thread.is_alive()):
             self.root.destroy()
 
     def callback_error(self, kind, error, traceback):
@@ -235,7 +270,20 @@ class RecorderWindow:
         try:
             while True:
                 kind, value = self.messages.get_nowait()
-                if kind == "setup_ok":
+                if kind == 'open_browser':
+                    webbrowser.open(value)
+                elif kind == 'link_status':
+                    self.account_label.set(value)
+                elif kind == 'link_complete':
+                    self.config=value;self.apply_configuration(value)
+                elif kind == 'link_required':
+                    self.account_label.set('Steam link required before recording')
+                    if not self.auto_link_attempted:self.link_account()
+                elif kind == 'account_verified' and value:
+                    self.account_label.set('Linked to: '+value)
+                elif kind == 'link_done':
+                    self.link_thread=None;self.link_button.configure(state="normal")
+                elif kind == "setup_ok":
                     self.worker, self.busy = None, False
                     self.config, start_after = value
                     self.apply_configuration(self.config)
@@ -257,15 +305,16 @@ class RecorderWindow:
                     self.status.update("stopped")
         except queue.Empty:
             pass
-        if self.closing and not self.worker:
+        if self.closing and not self.worker and not (self.link_thread and self.link_thread.is_alive()):
             self.root.destroy()
             return
         state = self.status.snapshot()
-        self.light.itemconfigure(self.bulb, fill=GREEN if state.green else RED)
+        self.light.itemconfigure(self.bulb, fill=LIGHT_COLORS[state.color])
         self.title.set(state.title)
         self.detail.set(state.detail)
         self.pending.set("Queued samples: " + str(state.pending))
-        self.last_upload.set("Last upload: " + (str(state.last_upload_seconds) + "s ago" if state.last_upload_seconds is not None else "—"))
+        self.last_upload.set('Comms: '+(str(state.last_comms_seconds)+'s ago' if state.last_comms_seconds is not None else '—')+
+                             ' · Upload: '+(str(state.last_upload_seconds)+'s ago' if state.last_upload_seconds is not None else '—'))
         locked = self.worker is not None or self.closing
         for widget in [self.start_button, self.settings_button, self.save_button, *self.entries]:
             widget.configure(state="disabled" if locked else "normal")

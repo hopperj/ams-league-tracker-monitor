@@ -8,18 +8,21 @@ compilation is required.
 1. Extract this ZIP, then double-click
    AMSLeagueRecorder-Windows-x64-Intel-AMD.exe.
 2. In AMS2, select Options > System > Shared Memory > Project CARS 2.
-3. The recorder connects and starts automatically. No account, name, or upload
-   key is needed. The server detects your AMS2 player name from the game.
+3. Sign in with Steam and approve this recorder in the browser. Use Link Steam
+   account if approval does not open. Recording waits for server confirmation.
 4. Setup is optional. The default server is https://ams2.ioresearch.ca:5443.
    Leave the capture code as AUTO to record all sessions. Existing settings
    and queued data continue working when upgrading from an older version.
 
-Green / Transmitting means recent AMS2 data has been received by the server.
-Red includes an explanation of what needs attention. Data saved - review means
-the server saved the upload but has processing notes; later uploads continue.
+Green / Comms open, awaiting race data means upload access is verified.
+Red / Recording in progress means live game data is being recorded and sent.
+Amber means a problem needs attention; read the message for the cause.
+Gray means checking, stopping or stopped. Communication is checked every five
+seconds, even when AMS2 is closed. Data saved - review means the server saved
+the upload but has processing notes; later uploads continue.
 A league administrator can review those notes in Recording diagnostics.
 
-The app remembers your settings and starts recording on future launches.
+The app remembers your settings and verifies your Steam link on future launches.
 AUTO records solo practice and league driving across tracks and cars. The server
 organizes sessions; administrators separately approve official league nights.
 Older saved capture codes remain supported. To enable automatic recording, Stop,
@@ -33,3 +36,6 @@ This executable records game data only. The optional UDP archive is available
 through the source/portable command-line client.
 
 Source: https://github.com/hopperj/ams-league-tracker-monitor
+
+STEAM ACCOUNT
+Sign into the webapp and choose Download my Windows recorder for personalized setup. Extract the whole ZIP, then run the EXE. Your browser asks you to approve this recorder. With a generic download or an existing installation, click Link Steam account. Recording and uploads wait until the server confirms the link. Existing settings and queued data are preserved.

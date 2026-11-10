@@ -102,6 +102,21 @@ class SpoolTest(unittest.TestCase):
 
 
 class TransportTest(unittest.TestCase):
+    def test_health_exercises_gzip_upload_path_and_checks_the_echoed_challenge(self):
+        t = Transport('http://127.0.0.1:8787', 'test-token')
+        def respond(path, payload):
+            self.assertEqual(path, '/api/recorder/health')
+            body = json.loads(gzip.decompress(payload))
+            return dict(nonce=body['nonce'], recorder_id='recorder', upload_ready=True, account_linked=True)
+        with patch.object(t, 'request', side_effect=respond):
+            self.assertIs(t.health('recorder')['upload_ready'], True)
+        for result in (dict(nonce='stale', recorder_id='recorder', upload_ready=True, account_linked=True),
+                       dict(nonce='challenge', recorder_id='another-recorder', upload_ready=True, account_linked=True),
+                       dict(nonce='challenge', recorder_id='recorder', upload_ready='true', account_linked=True),
+                       dict(nonce='challenge', recorder_id='recorder', upload_ready=True, account_linked=False)):
+            with patch('ams_recorder.transport.secrets.token_urlsafe', return_value='challenge'), patch.object(t, 'request', return_value=result):
+                with self.assertRaises(ValueError): t.health('recorder')
+
     def test_clock_uses_best_monotonic_round_trip(self):
         t=Transport('http://127.0.0.1:8787','token')
         responses=[{'server_time_ms':100015},{'server_time_ms':200065},{'server_time_ms':300115}]

@@ -1,161 +1,104 @@
 # AMS League Recorder
 
-A Windows AMS2 recorder that saves complete shared-memory snapshots to a durable local queue and sends compressed batches to [AMS League Server](https://github.com/hopperj/ams-league-tracker-webapp). One recorder contributes timing for the field and verified telemetry for its driver. Additional recorders contribute independent observations without adding duplicate laps.
+Windows recorder for Automobilista 2. It preserves complete shared-memory snapshots in a durable local queue and sends compressed batches to the [AMS League webapp](https://github.com/hopperj/ams-league-tracker-webapp). One recorder supplies field timing; each driver's own recorder supplies their verified personal telemetry. Independent recorders contribute observations without duplicating laps.
 
-The Windows executable build bundles Python and the graphical toolkit for drivers. Running from source or the portable Python archive requires 64-bit Python 3.9 or later; the desktop window also requires Tk 8.6 or later. No additional runtime PyPI packages are needed. Synthetic capture and archive replay also run on macOS and Linux.
+[Download published Windows builds](https://github.com/hopperj/ams-league-tracker-monitor/releases/latest) · [Changelog](CHANGELOG.md) · [Upload protocol](docs/protocol-v1.md)
 
-## Recorder window
+The source version is **0.5.0**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
 
-The recorder now has a small desktop window with one large status light and a short explanation:
+## Driver setup
 
-- **Green / Transmitting:** AMS2 is producing supported, consistent live-session data and the server has recently acknowledged a batch. A successful connection alone does not turn it green.
-- **Red:** recording is stopped, game data is unavailable/stale, an upload is failing, credentials were rejected, the format is unsupported, or the queue is catching up. **Data saved — review** means delivery succeeded but the server flagged processing notes; uploading continues. The text explains the condition.
+1. Sign in through Steam at [AMS League](https://ams2.ioresearch.ca:5443/#account) and choose **Download my Windows recorder**, or download the generic Windows ZIP from GitHub.
+2. Extract the ZIP and run `AMSLeagueRecorder-Windows-x64-Intel-AMD.exe`. The same x64 build works on Intel and AMD Windows PCs; Python and Tk are bundled.
+3. Approve the recorder in your browser under your Steam account. Existing installations and generic downloads use **Link Steam account**. Website sign-in alone does not approve a recorder.
+4. In AMS2, select **Options → System → Shared Memory → Project CARS 2**.
+5. Leave the capture code blank or set it to **AUTO**. Practice, qualifying, races, track/car changes and observed restarts are organized automatically. League-night approval happens separately on the website.
 
-Open the UI from source:
+Recording and uploads require a server-confirmed link to an enabled Steam account. The app can open and complete linking before AMS2 is running. Every new run verifies its link with the server before capturing; a cached local flag cannot grant access. Removed links or denied credentials pause capture. Older clients must also be linked to upload to the updated server.
+
+The personalized setup file is single-use and has no expiry. Browser approval links last 20 minutes; use **Link Steam account** again if one expires. Approved installation links have no time limit. Updates preserve the installation ID, private upload credential, destination and queued bytes.
+
+## Recorder status
+
+| Colour | Status | Meaning |
+| --- | --- | --- |
+| Green | **Comms open, awaiting race data** | Steam link, upload permission and a committed storage write were verified; waiting for live driving data. |
+| Red | **Recording in progress** | Live game data is being recorded and sent. |
+| Amber | **Needs attention** | A link, communication, capture or upload problem needs attention; read the message. |
+| Gray | **Checking connection**, **Stopping** or **Not recording** | The recorder is checking access or is stopped. |
+
+The recorder sends an authenticated gzip POST to `/api/recorder/health` every five seconds, including while AMS2 is closed. The server uses the same access checks as uploads, commits a bounded heartbeat row and echoes a fresh challenge. Probes create no race sessions or capture receipts. A successful probe cannot clear a failed data upload: that batch must receive a valid acknowledgement.
+
+Errors override the red recording status. **Data saved — review** means the server saved an upload with processing notes; delivery continues. Queued data is retained after failed uploads, stopping or closing. After a verified run loses communication, capture can continue locally while uploads retry; a fresh run waits for server verification. The window shows communication/upload ages and queued sample counts.
+
+## Run from source
+
+Use 64-bit Python 3.9 or later. The desktop window requires Tk 8.6 or later. There are no runtime PyPI dependencies. Live shared-memory capture requires Windows; synthetic capture and archive replay also work on macOS and Linux.
 
 ```sh
 python -m ams_recorder.gui
 ```
 
-Or run `python dist/AMSLeagueRecorder-Python-Portable.pyz` with no arguments after packaging. The native Windows `AMSLeagueRecorder-Windows-x64-Intel-AMD.exe` opens the window directly, without a console.
-
-On first launch, the recorder creates and saves its own installation connection, then starts automatically. **No account, name, or upload key is requested.** The default server is `https://ams2.ioresearch.ca:5443`. **Setup** contains only the server address and an optional capture code (leave blank or use **AUTO**). Existing saved credentials and queued data are reused unchanged.
-
-Later launches start recording automatically with saved settings. **Start recording** and **Stop** remain available. With **AUTO**, driving sessions are organized automatically as practice, qualifying or race, including car/track changes and observed restarts. An administrator can later associate the captured stages with a league night. To switch an existing installation to AUTO, stop, open **Setup**, clear the capture code, then save and start. Queued uploads retain their original destination. Setup runs in the background so the window stays responsive. A saved configuration can start capturing while offline; uploads retry and the light stays red until confirmed delivery resumes.
-
-The window shows the age of the last upload and the queued sample count at the uploader's latest check. With default settings, an upload or capture older than 10 seconds turns the light red; more than 240 queued samples shows a catch-up condition. Green indicates data delivery, not an official result or guaranteed completeness of every telemetry channel.
-
-Stopping or closing the app stops capture and waits for an in-progress request to finish. Remaining samples are retained locally and resume uploading on the next start. The window stays responsive while stopping. Logs rotate in `recorder.log` alongside the configuration, with two 1 MB backups; credentials are not logged.
-
-## Connect a recorder
-
-Download the latest Windows executable and open it. The recorder connects automatically and the server identifies the player from live AMS2 data. For another server, open **Setup** and change the address; the server must support automatic registration. There is no website sign-in or manual credential step.
-
-From source, simply run `python -m ams_recorder run` or `python -m ams_recorder.gui`. Optional command-line setup is also available:
+Optional setup and command-line recording:
 
 ```sh
-python -m ams_recorder configure --server http://127.0.0.1:8787
-```
-
-The client saves a random installation ID and private upload credential before connecting or recording. Registration is idempotent: retries use that same identity. First-launch recording works offline, with registration and uploads retrying in the background. This credential grants upload access only and is never displayed or logged. It is stored under `%LOCALAPPDATA%\AMSLeagueRecorder` on Windows, or `~/.local/AMSLeagueRecorder` on other systems.
-
-Older configurations retain their existing token and recorder ID. Their queued batches keep their original destination and exact bytes. A missing/corrupt configuration or a different server cannot silently replace the identity associated with an existing queue; restore its original configuration or use a separate configuration and spool for another installation.
-
-In AMS2 choose **Options > System > Shared Memory > Project CARS 2**, then run:
-
-```sh
+python -m ams_recorder configure --server https://ams2.ioresearch.ca:5443
+# Approve Link Steam account in the window before recording from the CLI.
 python -m ams_recorder run
-```
-
-The default ceiling is 60 snapshots per second, with uploads approximately every two seconds. Unchanged snapshots are not repeated. Change the rate or batching interval when needed:
-
-```sh
 python -m ams_recorder run --hz 120 --batch-seconds 5
-```
-
-Sampling is bounded by this ceiling, the game's publishing rate, and disk performance. It cannot guarantee observing every game frame or a transient event between samples.
-
-Stop with Ctrl+C. Pending snapshots stay on disk. To drain the queue after stopping:
-
-```sh
 python -m ams_recorder flush
 ```
 
-The queue resumes automatically on the next recording run as well. A failed upload never causes queued frames to be acknowledged or discarded. A revoked connection shows an explicit error; contact the league administrator. The app keeps the saved queue and does not create a replacement identity to bypass revocation. A closed or unknown session does not block intake: the server saves it with a review note, and the client continues sending later batches. Administrators can reopen or assign those saved captures without requesting a resend.
+The default ceiling is 60 snapshots per second, with uploads about every two seconds. Actual capture is bounded by the game's publishing rate, disk speed and unchanged snapshots. `flush` sends saved batches without starting capture and still verifies upload access.
 
-## Optional UDP archive
-
-For maximum capture coverage, enable AMS2's **UDP Protocol Version: Project CARS 2** and a nonzero UDP Frequency, then run:
+To archive UDP too, enable **UDP Protocol Version: Project CARS 2** and a nonzero UDP frequency in AMS2:
 
 ```sh
 python -m ams_recorder run --udp
 ```
 
-This preserves complete datagrams on port 5606 alongside memory snapshots. UDP payloads are retained with sender address, packet type, and version; they are not decoded into league projections in this release. This avoids inventing offsets for AMS2-specific packet variants. UDP delivery can lose packets, and some companion apps compete for the port. Shared-memory capture continues if the UDP socket cannot bind. If multiple game PCs broadcast on the same network, use `--udp-source GAME_PC_IP` to select the correct sender.
+UDP datagrams are retained without guessed decoding. `--udp-source GAME_PC_IP` restricts intake to one PC. UDP loss or port conflicts do not stop shared-memory capture.
 
-## Sessions and identity
+## Data preservation and identity
 
-Normal recording uses **AUTO**. The server correlates observed sessions and admins select official league nights. For a legacy explicit code, all observers use the same code and a new code is needed for each restarted session. Stop, change the optional capture code in Setup, and resume; queued batches retain their old codes.
+- Complete mapped memory, including padding, is saved as base64 with decoded fields when supported. SDK v14 exports all 158 top-level fields. Unsupported layouts remain raw archives.
+- Game lap validity comes from AMS2; the recorder does not invent validity from distance, pit state or sector coverage.
+- Safety and pace vehicles are excluded from participant/telemetry projections using vehicle model or class. Their original SDK fields and raw bytes remain archived; a racer's display name alone does not exclude them.
+- Steam ownership comes from explicit browser approval. Game names, observer slots and client-supplied driver IDs do not establish a Steam identity. Spectator, replay, ambiguous or inconsistent data does not establish personal telemetry ownership.
+- Upload retries retain the same batch identity and exact bytes. Only a matching successful acknowledgement clears a batch. Registration retries reuse the saved installation identity; revocation does not create a replacement.
 
-Automatic credentials use the game’s unique viewed participant and matching local car/class/speed during live driving. The server can reconstruct personal telemetry from the complete published SDK fields, including uploads from existing recorder executables that withheld their convenience telemetry because of a mismatched setup name. Named legacy credentials continue to require their configured game-name aliases. Spectated, paused, replay, duplicate-name, and unknown-owner data remains in the original capture without being assigned as personal telemetry. This conservative rule may exclude otherwise useful menu/garage telemetry from the comparison graphs.
+Settings, the SQLite queue and rotating `recorder.log` files are under `%LOCALAPPDATA%\AMSLeagueRecorder` on Windows, or `~/.local/AMSLeagueRecorder` elsewhere. Credentials are not displayed or logged. A missing configuration or another server cannot silently retarget an existing queue.
 
-## What gets preserved
+The default pending-data budget is 2,048 MB. Capture pauses at the budget and resumes as uploads free space. SQLite may retain reusable file pages, so this is a pending-payload budget rather than a strict filesystem quota.
 
-Each snapshot includes the complete mapped memory region, including page padding, as base64, plus the decoded fields when the layout is supported. The v14 decoder exports all **158 top-level SDK fields**, including participant arrays and channels that older SDKs describe as obsolete. Their presence does not establish that the game populates them meaningfully.
-
-Safety/pace cars are excluded from driver entries and personal telemetry using their participant name, class or labelled vehicle. Their original SDK fields and raw bytes remain in the capture.
-
-Only SDK **version 14** is decoded in this release. Other versions are retained as raw bytes without guessed offsets or derived statistics. Consistent snapshots use the live sequence number before and after copying. Raw unsupported-layout captures are explicitly marked inconsistent/uninterpreted.
-
-Check the header installed with the game:
+## Build and test
 
 ```sh
-python tools/check_sdk.py "C:\SteamLibrary\steamapps\common\Automobilista 2\Support\SharedMemory\AMS2_SharedMemoryExampleApp\SharedMemory.h"
-```
-
-The reference layout is 20,700 bytes with a sequence field at offset 7,320. Layout and interpretation follow the game SDK with known consumer corrections: session duration is seconds, and the pressure convenience field uses kPa, matching Second Monitor and an inspected recorded sample despite the older SDK's PSI comment. Raw SDK fields are always retained unchanged.
-
-The local queue pauses capture at the configured pending-data budget (2,048 MB by default) and resumes when uploads free space. SQLite may retain reusable file pages after upload, so this is a pending-payload budget rather than a strict total filesystem quota. Capture cannot continue indefinitely through a network outage without available disk space. Monitor queue logs during long sessions.
-
-## Portable distribution
-
-Download the Windows ZIP or portable Python archive from the [latest release](https://github.com/hopperj/ams-league-tracker-monitor/releases/latest). Release assets include the standalone executable, its checksum, and `SHA256SUMS` for all downloads.
-
-Build a single Python archive:
-
-```sh
+python -m unittest discover -s tests -v
 python tools/package_recorder.py
 python dist/AMSLeagueRecorder-Python-Portable.pyz --help
 ```
 
-Send `dist/AMSLeagueRecorder-Python-Portable.pyz` to drivers with 64-bit Python and Tk installed. Running it without arguments opens the recorder window. Explicit commands retain the CLI: replace `python -m ams_recorder` in the commands above with `python AMSLeagueRecorder-Python-Portable.pyz`.
+The portable Python archive requires Python and Tk on the destination machine. Running it without arguments opens the window; explicit arguments retain the CLI.
 
-The native download is named `AMSLeagueRecorder-Windows-x64-Intel-AMD.exe`, and its ZIP and checksum use the same OS/architecture label. **x64**, **x86-64**, and **AMD64** refer to the same CPU architecture used by both Intel and AMD 64-bit Windows PCs. Separate Intel and AMD builds are unnecessary. The `Python-Portable.pyz` download bundles no OS/CPU-specific runtime and requires Python and Tk on the target computer.
-
-A native executable build script is provided for Windows:
+On Windows, build the standalone executable with:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools/build_windows.ps1
 ```
 
-This requires x64 Windows Python, runs the recorder tests, installs PyInstaller into a local virtual environment, and builds the **windowed** `dist\AMSLeagueRecorder-Windows-x64-Intel-AMD.exe`. It then checks that the packaged Tcl/Tk window opens and closes without recording or contacting the server. One x64 build targets both Intel and AMD Windows PCs. The executable is the GUI application; use the Python archive or source for CLI commands.
+The script runs tests, installs PyInstaller into an isolated environment, builds the windowed x64 executable and checks packaged window startup/shutdown without recording or contacting a server. Win32 shared-memory tests run on Windows CI and skip on other operating systems. Live AMS2 multiplayer capture still needs validation on a game PC.
 
-The [Recorder checks workflow](https://github.com/hopperj/ams-league-tracker-monitor/actions/workflows/tests.yml) runs on branch pushes, pull requests, and manual dispatch. After the Linux/Windows Python test matrix passes, it builds the Windows x64 executable, checks its packaged window, and publishes **AMSLeagueRecorder-Windows-x64-Intel-AMD** as a CI artifact. Drivers can get the published version from [Releases](https://github.com/hopperj/ams-league-tracker-monitor/releases). The ZIP contains the executable, quick-start instructions, and a SHA-256 checksum. Extract it and double-click `AMSLeagueRecorder-Windows-x64-Intel-AMD.exe`; no Python installation or build is needed.
+## Releases
 
-To publish a version, update `pyproject.toml`, push the commit to `main`, then push an annotated `v<version>` tag on that commit. The [release workflow](https://github.com/hopperj/ams-league-tracker-monitor/actions/workflows/release.yml) waits for the matching successful main-branch build, verifies the executable checksum and architecture, packages the portable archive, and uploads all assets before publishing. Existing releases are not overwritten. A failed upload can leave an unpublished draft for recovery.
+The [Recorder checks workflow](https://github.com/hopperj/ams-league-tracker-monitor/actions/workflows/tests.yml) tests Python 3.9/3.12 on Linux and Windows and builds the checked Windows executable. A push to `main` builds artifacts; it does not publish a release.
 
-The automated Windows mapping/window checks complement live AMS2 capture validation on a game PC. The development Mac does not generate native Windows executables.
+To publish, update both `pyproject.toml` and `ams_recorder/__init__.py`, push the checked commit to `main`, then push its matching annotated `v<version>` tag. The [release workflow](https://github.com/hopperj/ams-league-tracker-monitor/actions/workflows/release.yml) waits for that exact commit's successful build, verifies checksums, prepares the ZIP and portable archive, and uploads all assets before publication. Existing releases are not overwritten.
 
-## Synthetic capture and replay
+## Further documentation
 
-The [full-rate Spa scenario](docs/synthetic-spa-race.md) generates three independent recorder streams for BootyWiz, EPaulD, and Foote, with complete synthetic memory snapshots, detailed telemetry, pit stops, and a race-review boundary case.
-
-Create a synthetic session in the dashboard and use its code:
-
-```sh
-python -m ams_recorder run --demo --demo-offset 89 --duration 10
-python -m ams_recorder flush
-```
-
-Demo captures are visibly marked and cannot contribute to real-session statistics; their original uploads are still retained with a processing note. Two recorder configurations with different driver credentials can exercise field merging and separate personal telemetry.
-
-Replay a downloaded original batch:
-
-```sh
-python -m ams_recorder run --replay original-batch.json.gz
-python -m ams_recorder flush
-```
-
-Replay uploads are archived and excluded from league projections. A target session whose real/synthetic type differs also retains the upload with a processing note.
-
-## Verification
-
-```sh
-python -m unittest discover -s tests -v
-```
-
-Tests cover lossless raw capture, layout, ownership, unsupported versions, retry identity, queue recovery, destination binding, and transport URL restrictions. A native mapping integration test runs on Windows and skips elsewhere. The GitHub Actions workflow runs it on Windows.
-
-Additional tests cover the UI indicator, background Start/Stop, automatic offline setup, idempotent registration, legacy queue preservation, stale acknowledgements, queue pressure, exact-byte retry recovery, and rejected acknowledgements retaining all frames. Desktop tests run when a display is available. The Mac native-window check used Python 3.12 with Tk 9; the old system Tk 8.5 is not supported by the UI.
-
-The shared-memory research is in `docs/ams2-data-research.md`. The upload contract is in `docs/protocol-v1.md`.
+- [Protocol and acknowledgement contract](docs/protocol-v1.md)
+- [AMS2 shared-memory and server research](docs/ams2-data-research.md)
+- [Full-rate synthetic Spa scenario](docs/synthetic-spa-race.md)
+- [Windows quick start](docs/windows-quickstart.txt)
+- [Changelog](CHANGELOG.md)
