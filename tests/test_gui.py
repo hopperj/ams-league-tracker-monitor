@@ -32,6 +32,9 @@ class WindowTest(unittest.TestCase):
     def tearDown(self):
         self.window.stop()
         if self.window.worker:self.window.worker.join(timeout=5)
+        if self.window.update_thread:self.window.update_thread.join(timeout=5)
+        self.window.link_cancel.set()
+        if self.window.link_thread:self.window.link_thread.join(timeout=5)
         try:self.root.destroy()
         except Exception:pass
         self.temp.cleanup()
@@ -53,6 +56,7 @@ class WindowTest(unittest.TestCase):
         self.assertEqual(self.window.detail.get(),"Connection unavailable")
 
     def test_background_capture_start_and_stop_keep_the_window_responsive(self):
+        self.window.auto_link_attempted=True
         def recorder(args,stop,on_event):
             self.assertIsNot(threading.current_thread(),threading.main_thread())
             on_event("started");on_event('comms_ok');on_event("captured",decoded=True,consistent=True,game_state=2);on_event("uploaded",pending=0)
@@ -97,6 +101,47 @@ class WindowTest(unittest.TestCase):
             self.assertFalse(window.setup_visible)
             self.assertFalse(hasattr(window,'token'))
         finally:root.destroy()
+
+    def test_failed_update_check_starts_the_installed_recorder_without_waiting_for_steam_again(self):
+        self.window.auto_link_attempted=True
+        def recorder(args,stop,on_event):
+            on_event('started');stop.wait(3)
+        with patch('ams_recorder.gui.updates.native_target',return_value=self.path/'recorder.exe'), \
+                patch('ams_recorder.gui.updates.check_release',side_effect=OSError('Offline')), \
+                patch('ams_recorder.gui.run',side_effect=recorder) as run:
+            self.window.startup()
+            limit=time.monotonic()+3
+            while time.monotonic()<limit and not run.called:self.root.update();time.sleep(.01)
+            self.assertTrue(run.called)
+            self.assertIn('continuing with',self.window.update_text.get())
+
+    def test_skip_update_cancels_download_before_starting_the_existing_recorder(self):
+        ready=threading.Event();release=threading.Event();self.window.auto_link_attempted=True
+        def check():ready.set();release.wait(3);return None
+        def recorder(args,stop,on_event):on_event('started');stop.wait(3)
+        with patch('ams_recorder.gui.updates.native_target',return_value=self.path/'recorder.exe'), \
+                patch('ams_recorder.gui.updates.check_release',side_effect=check), \
+                patch('ams_recorder.gui.updates.prepare_install') as install, \
+                patch('ams_recorder.gui.run',side_effect=recorder) as run:
+            self.window.startup();self.assertTrue(ready.wait(1))
+            self.root.update();self.assertFalse(run.called)
+            self.window.start();self.assertTrue(self.window.update_cancel.is_set())
+            release.set();limit=time.monotonic()+3
+            while time.monotonic()<limit and not run.called:self.root.update();time.sleep(.01)
+            self.assertTrue(run.called);install.assert_not_called()
+
+    def test_ready_update_hands_off_then_closes_before_recording_or_browser_linking(self):
+        plan=self.path/'plan.json'
+        with patch('ams_recorder.gui.updates.native_target',return_value=self.path/'recorder.exe'), \
+                patch('ams_recorder.gui.updates.check_release',return_value=object()), \
+                patch('ams_recorder.gui.updates.prepare_install',return_value=plan), \
+                patch('ams_recorder.gui.updates.launch_helper') as helper, \
+                patch('ams_recorder.gui.run') as run, \
+                patch.object(self.window,'close',side_effect=lambda:setattr(self.window,'closing',True)) as close:
+            self.window.startup();self.window.update_thread.join(timeout=3)
+            self.window.poll()
+            helper.assert_called_once_with(plan);close.assert_called_once();run.assert_not_called()
+            self.assertIsNone(self.window.link_thread)
 
 
 if __name__ == "__main__":unittest.main()

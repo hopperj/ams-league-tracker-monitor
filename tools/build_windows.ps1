@@ -15,4 +15,6 @@ if ($LASTEXITCODE -ne 0) { throw "PyInstaller installation failed." }
 if ($LASTEXITCODE -ne 0) { throw "The executable build failed." }
 & .\.venv\Scripts\python.exe tools/smoke_gui.py $executable
 if ($LASTEXITCODE -ne 0) { throw "The packaged recorder window failed its startup check." }
+& .\.venv\Scripts\python.exe tools/smoke_update.py $executable
+if ($LASTEXITCODE -ne 0) { throw "The packaged recorder failed its self-update check." }
 Write-Output "Recorder executable: $executable"

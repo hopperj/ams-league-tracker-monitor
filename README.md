@@ -4,7 +4,7 @@ Windows recorder for Automobilista 2. It preserves complete shared-memory snapsh
 
 [Download published Windows builds](https://github.com/hopperj/ams-league-tracker-monitor/releases/latest) · [Changelog](CHANGELOG.md) · [Upload protocol](docs/protocol-v1.md)
 
-The source version is **0.5.0**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
+The source version is **0.6.0**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
 
 ## Driver setup
 
@@ -69,6 +69,18 @@ UDP datagrams are retained without guessed decoding. `--udp-source GAME_PC_IP` r
 
 Settings, the SQLite queue and rotating `recorder.log` files are under `%LOCALAPPDATA%\AMSLeagueRecorder` on Windows, or `~/.local/AMSLeagueRecorder` elsewhere. Credentials are not displayed or logged. A missing configuration or another server cannot silently retarget an existing queue.
 
+## Automatic Windows updates
+
+The packaged Windows executable checks for a newer published release at startup, before capture or browser linking starts. It downloads only from this project's fixed GitHub release location, verifies the advertised size, SHA-256 digest and Windows x64 format, and exercises the packaged window with disposable test data before installing.
+
+If an update is ready, a separate helper waits for the old process to close, replaces the executable atomically on its own drive and restarts it with the same configuration and queue paths. The saved installation ID, private upload credential and Steam account link stay intact. **An ordinary update does not require another Steam login.** A removed or revoked account link still requires normal approval.
+
+The window stays responsive while checking and downloading. **Skip update & start** continues with the installed version. An unavailable update service, bad download or failed preflight also leaves the installed version running. Installation or launch failures restore the preserved executable where needed. Updates occur during startup, so a running recording is not interrupted.
+
+Update files and a recovery copy live under the configuration directory's `updates` folder; completed jobs are cleaned up after seven days. Recorder credentials and browser cookies are never sent to GitHub. The recorder's capture status light continues to describe recording and upload health, separately from the update message.
+
+Drivers using a version without this updater need to install the updater-enabled Windows build once. Later published releases update automatically. Source checkouts and portable Python archives are updated manually.
+
 The default pending-data budget is 2,048 MB. Capture pauses at the budget and resumes as uploads free space. SQLite may retain reusable file pages, so this is a pending-payload budget rather than a strict filesystem quota.
 
 ## Build and test
@@ -87,13 +99,13 @@ On Windows, build the standalone executable with:
 powershell -ExecutionPolicy Bypass -File tools/build_windows.ps1
 ```
 
-The script runs tests, installs PyInstaller into an isolated environment, builds the windowed x64 executable and checks packaged window startup/shutdown without recording or contacting a server. Win32 shared-memory tests run on Windows CI and skip on other operating systems. Live AMS2 multiplayer capture still needs validation on a game PC.
+The script runs tests, installs PyInstaller into an isolated environment, builds the windowed x64 executable and checks packaged window startup/shutdown without recording or contacting a server. It also exercises the real updater helper, a locked executable, replacement and restart with a saved Steam link and queued batch. Win32 shared-memory tests run on Windows CI and skip on other operating systems. Live AMS2 multiplayer capture still needs validation on a game PC.
 
 ## Releases
 
 The [Recorder checks workflow](https://github.com/hopperj/ams-league-tracker-monitor/actions/workflows/tests.yml) tests Python 3.9/3.12 on Linux and Windows and builds the checked Windows executable. A push to `main` builds artifacts; it does not publish a release.
 
-To publish, update both `pyproject.toml` and `ams_recorder/__init__.py`, push the checked commit to `main`, then push its matching annotated `v<version>` tag. The [release workflow](https://github.com/hopperj/ams-league-tracker-monitor/actions/workflows/release.yml) waits for that exact commit's successful build, verifies checksums, prepares the ZIP and portable archive, and uploads all assets before publication. Existing releases are not overwritten.
+To publish, update both `pyproject.toml` and `ams_recorder/__init__.py`, push the checked commit to `main`, then push its matching annotated `v<version>` tag. The [release workflow](https://github.com/hopperj/ams-league-tracker-monitor/actions/workflows/release.yml) waits for that exact commit's successful build, verifies checksums, prepares the ZIP, portable archive and `recorder-update.json` manifest, and uploads all assets before publication. The manifest identifies the exact checked executable and is included in `SHA256SUMS`. The updater uses GitHub's [latest release asset URL](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases). Existing releases are not overwritten.
 
 ## Further documentation
 

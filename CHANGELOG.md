@@ -2,10 +2,14 @@
 
 Changes are listed newest first. Entries under Unreleased describe source changes that have not yet been published as a tagged download.
 
-## Unreleased — 0.5.0
+## Unreleased — 0.6.0
 
 ### Added
 
+- Startup self-updates for the packaged Windows executable, using the published release manifest, checksum verification and packaged-window preflight.
+- A separate Windows helper for atomic replacement and restart, preserving the existing Steam link, installation credentials, settings and queued bytes.
+- **Skip update & start**, failed-update recovery and a native Windows updater smoke check in the build workflow.
+- A checksummed `recorder-update.json` asset generated and published with each release.
 - Mandatory server-confirmed Steam linking before shared-memory, replay or UDP capture starts.
 - An authenticated health check every five seconds, including while the game is closed, verifying upload permission and committed server storage.
 - Separate ready, recording, attention and stopped states, with communication/upload ages and accessible text labels.

@@ -76,5 +76,6 @@ jobs:
             dist/AMSLeagueRecorder-Windows-x64-Intel-AMD.exe \
             dist/AMSLeagueRecorder-Windows-x64-Intel-AMD.exe.sha256 \
             dist/AMSLeagueRecorder-Python-Portable.pyz \
+            dist/recorder-update.json \
             dist/SHA256SUMS
           gh release edit "$RELEASE_TAG" --draft=false --latest

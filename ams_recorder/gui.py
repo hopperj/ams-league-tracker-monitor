@@ -1,15 +1,18 @@
 """Steam-linked recording with distinct ready, recording, and error indicators."""
 import argparse
+import json
 import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
 import queue
+import sys
 import threading
 import webbrowser
 from types import SimpleNamespace
 
 from .configuration import DEFAULT_SERVER, connection_values, defaults, prepare_configuration
+from . import __version__, updates
 from .engine import run
 from .enrollment import prepare_enrolled, connect as connect_account
 from .status import RecorderStatus, upload_problem
@@ -22,7 +25,7 @@ LOG = logging.getLogger("ams-recorder")
 
 
 class RecorderWindow:
-    def __init__(self, root, config_path=None, spool_path=None, demo=False, auto_start=True):
+    def __init__(self, root, config_path=None, spool_path=None, demo=False, auto_start=True, check_updates=True):
         import tkinter as tk
         from tkinter import ttk, font
         self.tk, self.ttk, self.root = tk, ttk, root
@@ -34,6 +37,9 @@ class RecorderWindow:
         self.worker = None
         self.link_thread = None
         self.auto_link_attempted = False
+        self.update_thread = None
+        self.update_cancel = threading.Event()
+        self.start_after_update = auto_start
         self.link_cancel = threading.Event()
         self.busy = False
         self.closing = False
@@ -44,8 +50,8 @@ class RecorderWindow:
         self.status = RecorderStatus()
         root.title("AMS League Recorder" + (" — DEMO" if demo else ""))
         root.configure(background=PAPER)
-        root.minsize(470, 500)
-        root.geometry("540x550")
+        root.minsize(470, 530)
+        root.geometry("540x580")
         family = font.nametofont("TkDefaultFont").actual("family")
         self.family = family
         root.option_add("*Font", (family, 11))
@@ -107,6 +113,9 @@ class RecorderWindow:
         self.start_button.pack(side="left", fill="x", expand=True, padx=(0, 5))
         self.stop_button = ttk.Button(actions, text="Stop", command=self.stop, state="disabled")
         self.stop_button.pack(side="left", padx=(5, 0))
+        self.update_text = tk.StringVar(value='Recorder v'+__version__)
+        tk.Label(body, textvariable=self.update_text, foreground=MUTED, background=PAPER,
+                 font=(family, 9), wraplength=440, anchor='w', justify='left').pack(fill='x', pady=(10, 0))
         self.setup_dialog = tk.Toplevel(root)
         self.setup_dialog.withdraw()
         self.setup_dialog.title("Recorder setup")
@@ -141,11 +150,48 @@ class RecorderWindow:
         root.report_callback_exception = self.callback_error
         self.poll()
         if self.config and auto_start:
-            root.after(150, self.start)
-            if not self.config.get('account_linked'):root.after(500,self.link_account)
+            root.after(150, self.startup if check_updates else self.start)
+
+    def startup(self):
+        if self.worker or self.busy or self.closing or self.update_thread:return
+        target = updates.native_target()
+        if target is None:
+            self.start()
+            return
+        self.update_cancel.clear()
+        self.start_after_update = True
+        self.status.update('updating')
+        self.update_text.set('Checking for recorder updates…')
+        def check():
+            plan = None
+            try:
+                folder = self.config_path.parent / 'updates'
+                updates.cleanup(folder)
+                release = updates.check_release()
+                updates.cancelled(self.update_cancel)
+                if release:
+                    plan = updates.prepare_install(release, target, folder, self.update_cancel,
+                        lambda text: self.messages.put(('update_status', text)), restart_args=sys.argv[1:])
+                    updates.cancelled(self.update_cancel)
+                    self.messages.put(('update_ready', plan))
+                    plan = None  # The GUI owns installation or cleanup from here.
+                else:
+                    self.messages.put(('update_status', 'Recorder v'+__version__+' · Up to date'))
+            except updates.UpdateCancelled:
+                self.messages.put(('update_status', 'Recorder v'+__version__+' · Update skipped'))
+            except Exception as error:
+                LOG.warning('Recorder update unavailable (%s); installed version retained', type(error).__name__)
+                self.messages.put(('update_status', 'Could not update; continuing with recorder v'+__version__))
+            finally:
+                if plan:
+                    try: updates.discard_install(plan)
+                    except (OSError, ValueError): LOG.warning('Could not clean up the skipped update')
+                self.messages.put(('update_done', None))
+        self.update_thread = threading.Thread(target=check, name='recorder-update', daemon=True)
+        self.update_thread.start()
 
     def link_account(self):
-        if self.closing or not self.config or self.link_thread and self.link_thread.is_alive():return
+        if self.closing or self.update_thread or not self.config or self.link_thread and self.link_thread.is_alive():return
         self.auto_link_attempted = True
         self.link_cancel.clear();self.link_button.configure(state="disabled")
         def work():
@@ -167,13 +213,13 @@ class RecorderWindow:
     def toggle_setup(self):
         if self.setup_visible:
             self.hide_setup()
-        elif not self.worker and not self.busy:
+        elif not self.worker and not self.busy and not self.update_thread:
             self.setup_visible = True
             self.setup_dialog.deiconify()
             self.setup_dialog.lift()
 
     def save_setup(self, start_after=False):
-        if self.worker or self.busy:
+        if self.worker or self.busy or self.update_thread:
             return
         try:
             values = connection_values(self.server.get(), 'automatic', self.event_code.get())
@@ -203,6 +249,12 @@ class RecorderWindow:
         self.worker.start()
 
     def start(self):
+        if self.closing:return
+        if self.update_thread:
+            self.start_after_update = True
+            self.update_cancel.set()
+            self.update_text.set('Skipping update; starting installed recorder…')
+            return
         if self.worker or self.busy or self.closing:
             return
         try:
@@ -246,8 +298,13 @@ class RecorderWindow:
 
         self.worker = threading.Thread(target=record, name="recorder", daemon=True)
         self.worker.start()
+        if not self.config.get('account_linked') and not self.auto_link_attempted:
+            self.root.after(500, self.link_account)
 
     def stop(self):
+        if self.update_thread:
+            self.start_after_update = False
+            self.update_cancel.set()
         if self.worker:
             self.stop_event.set()
             self.cancel_setup.set()
@@ -257,7 +314,7 @@ class RecorderWindow:
         self.closing = True
         self.link_cancel.set()
         self.stop()
-        if not self.worker and not (self.link_thread and self.link_thread.is_alive()):
+        if not self.worker and not self.update_thread and not (self.link_thread and self.link_thread.is_alive()):
             self.root.destroy()
 
     def callback_error(self, kind, error, traceback):
@@ -270,7 +327,26 @@ class RecorderWindow:
         try:
             while True:
                 kind, value = self.messages.get_nowait()
-                if kind == 'open_browser':
+                if kind == 'update_status':
+                    self.update_text.set(value)
+                elif kind == 'update_ready':
+                    if self.closing or self.update_cancel.is_set() or self.worker:
+                        updates.discard_install(value)
+                    else:
+                        try:
+                            updates.launch_helper(value)
+                        except Exception as error:
+                            updates.discard_install(value)
+                            LOG.warning('Recorder update helper unavailable (%s)', type(error).__name__)
+                            self.update_text.set('Could not install update; using recorder v'+__version__)
+                        else:
+                            self.update_text.set('Installing recorder update; restarting…')
+                            self.close()
+                elif kind == 'update_done':
+                    self.update_thread = None
+                    self.status.update('stopped')
+                    if self.start_after_update and not self.closing:self.start()
+                elif kind == 'open_browser':
                     webbrowser.open(value)
                 elif kind == 'link_status':
                     self.account_label.set(value)
@@ -305,7 +381,7 @@ class RecorderWindow:
                     self.status.update("stopped")
         except queue.Empty:
             pass
-        if self.closing and not self.worker and not (self.link_thread and self.link_thread.is_alive()):
+        if self.closing and not self.worker and not self.update_thread and not (self.link_thread and self.link_thread.is_alive()):
             self.root.destroy()
             return
         state = self.status.snapshot()
@@ -315,10 +391,14 @@ class RecorderWindow:
         self.pending.set("Queued samples: " + str(state.pending))
         self.last_upload.set('Comms: '+(str(state.last_comms_seconds)+'s ago' if state.last_comms_seconds is not None else '—')+
                              ' · Upload: '+(str(state.last_upload_seconds)+'s ago' if state.last_upload_seconds is not None else '—'))
-        locked = self.worker is not None or self.closing
-        for widget in [self.start_button, self.settings_button, self.save_button, *self.entries]:
+        locked = self.worker is not None or self.closing or self.update_thread is not None
+        for widget in [self.settings_button, self.save_button, *self.entries]:
             widget.configure(state="disabled" if locked else "normal")
-        self.stop_button.configure(state="normal" if self.worker and not self.closing else "disabled")
+        self.link_button.configure(state='disabled' if self.update_thread or self.closing or
+            self.link_thread and self.link_thread.is_alive() else 'normal')
+        self.start_button.configure(text='Skip update & start' if self.update_thread else 'Start recording',
+            state='disabled' if self.worker or self.closing else 'normal')
+        self.stop_button.configure(state="normal" if (self.worker or self.update_thread) and not self.closing else "disabled")
         self.root.after(200, self.poll)
 
 
@@ -329,7 +409,10 @@ def main(argv=None):
     parser.add_argument("--spool", default=str(spool))
     parser.add_argument("--demo", action="store_true", help="Synthetic data for local testing; not a real race")
     parser.add_argument("--smoke-test", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument('--skip-update', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--smoke-result', help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.smoke_result and not args.smoke_test:parser.error('--smoke-result requires --smoke-test')
     log_path = Path(args.config).parent / "recorder.log"
     log_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
@@ -338,13 +421,16 @@ def main(argv=None):
     if tk.TkVersion < 8.6:
         raise RuntimeError("The recorder window requires Tk 8.6 or later. Use a current Python installation.")
     root = tk.Tk()
-    window = RecorderWindow(root, args.config, args.spool, args.demo, auto_start=not args.smoke_test)
+    window = RecorderWindow(root, args.config, args.spool, args.demo, auto_start=not args.smoke_test,
+                            check_updates=not args.skip_update)
     if args.smoke_test:
         root.withdraw()
         root.after(250, window.close)
     root.mainloop()
     if window.failed:
         raise SystemExit(1)
+    if args.smoke_result:
+        Path(args.smoke_result).write_text(json.dumps(dict(complete=True,version=__version__)))
 
 
 if __name__ == "__main__":

@@ -39,3 +39,11 @@ Source: https://github.com/hopperj/ams-league-tracker-monitor
 
 STEAM ACCOUNT
 Sign into the webapp and choose Download my Windows recorder for personalized setup. Extract the whole ZIP, then run the EXE. Your browser asks you to approve this recorder. With a generic download or an existing installation, click Link Steam account. Recording and uploads wait until the server confirms the link. Existing settings and queued data are preserved.
+
+AUTOMATIC UPDATES (0.6.0 AND LATER)
+The Windows EXE checks for published updates at startup before recording. A
+verified update installs and restarts automatically with your saved Steam link,
+settings and queue. You do not need to sign into Steam again for an ordinary
+update. Skip update & start uses the installed version; failed checks/downloads
+also keep the current version. Running recordings are not interrupted.
+Older versions need a one-time download of an updater-enabled Windows build.

@@ -79,6 +79,8 @@ class RecorderStatus:
                 self.last_comms = None
                 self.last_capture = self.last_upload = None
                 self.server_notice = None
+            elif kind == 'updating':
+                self.mode = 'updating'
             elif kind == "captured":
                 self.last_capture = None
                 self.capture_error = None
@@ -134,6 +136,9 @@ class RecorderStatus:
             elif self.mode == "stopping":
                 color = 'gray'
                 title, detail = "Stopping", "Finishing the current request. Queued data stays saved."
+            elif self.mode == 'updating':
+                color, title = 'gray', 'Checking for updates'
+                detail = 'Recording starts after the update check. Skip it to use the installed version.'
             elif self.mode == "idle":
                 color = 'gray'
                 title = "Not recording"
