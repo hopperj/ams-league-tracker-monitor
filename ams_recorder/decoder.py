@@ -7,6 +7,7 @@ import unicodedata
 from collections import Counter
 
 from .schema import SharedMemory, STRUCT_BYTES, SUPPORTED_VERSION
+from .participants import is_safety_car
 
 PHASES = {1: "practice", 2: "test", 3: "qualifying", 4: "formation", 5: "race", 6: "time_trial"}
 
@@ -58,6 +59,8 @@ def decode(raw, driver_name=None):
         if not p["mName"]:
             continue
         car, cls = fields["mCarNames"][i], fields["mCarClassNames"][i]
+        if is_safety_car(p["mName"], car, cls):
+            continue
         participants.append({
             "slot": i, "key": identity(p["mName"], car, cls), "name": p["mName"],
             "car": car, "class": cls, "active": p["mIsActive"],

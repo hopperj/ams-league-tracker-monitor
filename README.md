@@ -83,6 +83,8 @@ Automatic credentials use the game’s unique viewed participant and matching lo
 
 Each snapshot includes the complete mapped memory region, including page padding, as base64, plus the decoded fields when the layout is supported. The v14 decoder exports all **158 top-level SDK fields**, including participant arrays and channels that older SDKs describe as obsolete. Their presence does not establish that the game populates them meaningfully.
 
+Safety/pace cars are excluded from driver entries and personal telemetry using their participant name, class or labelled vehicle. Their original SDK fields and raw bytes remain in the capture.
+
 Only SDK **version 14** is decoded in this release. Other versions are retained as raw bytes without guessed offsets or derived statistics. Consistent snapshots use the live sequence number before and after copying. Raw unsupported-layout captures are explicitly marked inconsistent/uninterpreted.
 
 Check the header installed with the game:
