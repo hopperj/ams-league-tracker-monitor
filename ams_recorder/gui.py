@@ -154,6 +154,9 @@ class RecorderWindow:
 
     def startup(self):
         if self.worker or self.busy or self.closing or self.update_thread:return
+        if self.link_thread and self.link_thread.is_alive():
+            self.start()
+            return
         target = updates.native_target()
         if target is None:
             self.start()
@@ -183,12 +186,15 @@ class RecorderWindow:
                 LOG.warning('Recorder update unavailable (%s); installed version retained', type(error).__name__)
                 self.messages.put(('update_status', 'Could not update; continuing with recorder v'+__version__))
             finally:
-                if plan:
-                    try: updates.discard_install(plan)
-                    except (OSError, ValueError): LOG.warning('Could not clean up the skipped update')
+                if plan:self.discard_update(plan)
                 self.messages.put(('update_done', None))
         self.update_thread = threading.Thread(target=check, name='recorder-update', daemon=True)
         self.update_thread.start()
+
+    def discard_update(self, plan):
+        try:updates.discard_install(plan)
+        except (OSError, ValueError, KeyError, TypeError):
+            LOG.warning('Could not clean up the skipped update; installed recorder retained')
 
     def link_account(self):
         if self.closing or self.update_thread or not self.config or self.link_thread and self.link_thread.is_alive():return
@@ -331,12 +337,12 @@ class RecorderWindow:
                     self.update_text.set(value)
                 elif kind == 'update_ready':
                     if self.closing or self.update_cancel.is_set() or self.worker:
-                        updates.discard_install(value)
+                        self.discard_update(value)
                     else:
                         try:
                             updates.launch_helper(value)
                         except Exception as error:
-                            updates.discard_install(value)
+                            self.discard_update(value)
                             LOG.warning('Recorder update helper unavailable (%s)', type(error).__name__)
                             self.update_text.set('Could not install update; using recorder v'+__version__)
                         else:

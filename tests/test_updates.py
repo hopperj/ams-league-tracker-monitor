@@ -167,12 +167,26 @@ class InstallTest(unittest.TestCase):
         self.assertFalse(updates.apply_install(plan,wait=wait,start=lambda *args:starts.append(args)))
         self.assertEqual(starts,[]);self.assertEqual(self.target.read_bytes(),self.old)
 
+    def test_result_storage_failure_still_rolls_back_and_restarts_the_old_recorder(self):
+        plan=self.stage();starts=[]
+        with patch('ams_recorder.updates.write_json',side_effect=OSError('Storage full')):
+            self.assertFalse(updates.apply_install(plan,wait=lambda pid:None,start=lambda *args:starts.append(args)))
+        self.assertEqual(len(starts),1);self.assertEqual(self.target.read_bytes(),self.old)
+        self.assert_identity_preserved()
+
     def test_second_update_cannot_take_over_an_active_job(self):
         first=self.stage()
         with self.assertRaises(updates.UpdateError):self.stage()
         self.assertTrue(first.exists())
         updates.discard_install(first)
         self.assertEqual(list((self.data/'updates').iterdir()),[])
+
+    def test_an_independent_installation_change_is_never_overwritten(self):
+        plan=self.stage();other=executable(b'another installed version');self.target.write_bytes(other)
+        starts=[]
+        self.assertFalse(updates.apply_install(plan,wait=lambda pid:None,start=lambda *args:starts.append(args)))
+        self.assertEqual(self.target.read_bytes(),other);self.assertEqual(starts,[])
+        self.assert_identity_preserved()
 
     def test_install_plan_cannot_redirect_replacement_to_a_different_file(self):
         plan=self.stage();body=json.loads(plan.read_text());body['staged']=str(self.config)

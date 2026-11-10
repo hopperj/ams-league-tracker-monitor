@@ -300,6 +300,14 @@ def apply_install(plan_path, wait=wait_for_process, start=start_recorder, replac
     plan = read_plan(plan_path)
     target, staged, backup = Path(plan['target']), Path(plan['staged']), job / 'helper.exe'
     installed = can_restart = False
+    def replace_image(source):
+        for attempt in range(30):
+            try:
+                replace(source, target)
+                return
+            except PermissionError:
+                if attempt == 29: raise
+                time.sleep(1)
     try:
         wait(plan['parent_pid'])
         verify_executable(backup, plan['old_sha256'])
@@ -309,12 +317,8 @@ def apply_install(plan_path, wait=wait_for_process, start=start_recorder, replac
         verify_executable(staged, plan['sha256'], plan['size'])
         # A one-file launcher's parent or antivirus can release the old image
         # shortly after its GUI exits. Retry the atomic replacement briefly.
-        for attempt in range(30):
-            try:
-                replace(staged, target); installed = True; break
-            except PermissionError:
-                if attempt == 29: raise
-                time.sleep(1)
+        replace_image(staged)
+        installed = True
         verify_executable(target, plan['sha256'], plan['size'])
         write_json(job / 'result.json', dict(status='installed', version=plan['version']))
         restarted = start(target, plan['restart_args'])
@@ -329,8 +333,11 @@ def apply_install(plan_path, wait=wait_for_process, start=start_recorder, replac
             rollback = target.with_name('.' + target.name + '.' + job.name + '.rollback.exe')
             shutil.copyfile(backup, rollback)
             verify_executable(rollback, plan['old_sha256'])
-            replace(rollback, target)
-        write_json(job / 'result.json', dict(status='failed', version=plan['version']))
+            replace_image(rollback)
+        try:
+            write_json(job / 'result.json', dict(status='failed', version=plan['version']))
+        except OSError:
+            pass
         # If installation/restart failed, reopen the preserved version once.
         # --skip-update prevents a repeated failure/restart loop.
         if can_restart and target.exists(): start(target, plan['restart_args'])

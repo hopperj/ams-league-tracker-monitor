@@ -143,5 +143,31 @@ class WindowTest(unittest.TestCase):
             helper.assert_called_once_with(plan);close.assert_called_once();run.assert_not_called()
             self.assertIsNone(self.window.link_thread)
 
+    def test_stop_after_download_cancels_the_queued_handoff_without_starting_capture(self):
+        plan=self.path/'plan.json'
+        with patch('ams_recorder.gui.updates.native_target',return_value=self.path/'recorder.exe'), \
+                patch('ams_recorder.gui.updates.check_release',return_value=object()), \
+                patch('ams_recorder.gui.updates.prepare_install',return_value=plan), \
+                patch('ams_recorder.gui.updates.discard_install') as discard, \
+                patch('ams_recorder.gui.updates.launch_helper') as helper, \
+                patch('ams_recorder.gui.run') as run:
+            self.window.startup();self.window.update_thread.join(timeout=3)
+            self.window.stop();self.window.poll()
+            discard.assert_called_once_with(plan);helper.assert_not_called();run.assert_not_called()
+
+    def test_bad_update_plan_or_cleanup_failure_does_not_block_the_installed_recorder(self):
+        self.window.auto_link_attempted=True
+        def recorder(args,stop,on_event):on_event('started');stop.wait(3)
+        with patch('ams_recorder.gui.updates.native_target',return_value=self.path/'recorder.exe'), \
+                patch('ams_recorder.gui.updates.check_release',return_value=object()), \
+                patch('ams_recorder.gui.updates.prepare_install',return_value=self.path/'plan.json'), \
+                patch('ams_recorder.gui.updates.launch_helper',side_effect=ValueError('Bad plan')), \
+                patch('ams_recorder.gui.updates.discard_install',side_effect=ValueError('Bad plan')), \
+                patch('ams_recorder.gui.run',side_effect=recorder) as run:
+            self.window.startup();self.window.update_thread.join(timeout=3);self.window.poll()
+            limit=time.monotonic()+3
+            while time.monotonic()<limit and not run.called:self.root.update();time.sleep(.01)
+            self.assertTrue(run.called);self.assertFalse(self.window.closing)
+
 
 if __name__ == "__main__":unittest.main()
