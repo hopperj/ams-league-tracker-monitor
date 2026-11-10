@@ -197,9 +197,15 @@ def probe(executable, job):
     # settings/queue. Smoke mode performs no registration or Steam/network work.
     with tempfile.TemporaryDirectory(prefix='probe-', dir=str(job)) as folder:
         root = Path(folder)
+        result = root / 'window-result.json'
         subprocess.run([str(executable), '--smoke-test', '--config', str(root / 'config.json'),
-            '--spool', str(root / 'spool.sqlite3')], check=True, timeout=45,
+            '--spool', str(root / 'spool.sqlite3'), '--smoke-result', str(result)], check=True, timeout=45,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        if result.stat().st_size > 4096: raise UpdateError('Invalid recorder window check')
+        body = json.loads(result.read_text())
+        if body.get('complete') is not True: raise UpdateError('Recorder window check did not finish')
+        version(body.get('version'))
+        return body['version']
 
 
 def prepare_install(release, target, updates_root, cancel, notify, restart_args=None, opener=None, probe_fn=probe):
@@ -215,7 +221,8 @@ def prepare_install(release, target, updates_root, cancel, notify, restart_args=
         download(release, candidate, cancel, notify, opener)
         notify('Checking the new recorder window…')
         cancelled(cancel)
-        probe_fn(candidate, job)
+        if probe_fn(candidate, job) != release.version:
+            raise UpdateError('Downloaded recorder version does not match its release')
         cancelled(cancel)
         # Preflight write permission and stage on the target's own filesystem;
         # LocalAppData and the executable can live on different drives.

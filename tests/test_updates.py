@@ -101,7 +101,7 @@ class InstallTest(unittest.TestCase):
     def stage(self, payload=None, probe=None, cancel=None):
         return updates.prepare_install(self.release,self.target,self.data/'updates',cancel or threading.Event(),
             lambda text:None, restart_args=self.args, opener=Opener(self.new if payload is None else payload),
-            probe_fn=probe or (lambda candidate,job:None))
+            probe_fn=probe or (lambda candidate,job:self.release.version))
 
     def assert_identity_preserved(self):
         self.assertEqual(self.config.read_bytes(),self.config_bytes)
@@ -142,6 +142,11 @@ class InstallTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):self.stage(probe=fail)
         stop=threading.Event();stop.set()
         with self.assertRaises(updates.UpdateCancelled):self.stage(cancel=stop)
+        self.assertEqual(self.target.read_bytes(),self.old)
+        self.assert_identity_preserved()
+
+    def test_a_mislabeled_release_cannot_install_an_older_binary(self):
+        with self.assertRaises(updates.UpdateError):self.stage(probe=lambda candidate,job:'0.6.0')
         self.assertEqual(self.target.read_bytes(),self.old)
         self.assert_identity_preserved()
 
