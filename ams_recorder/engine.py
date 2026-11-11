@@ -133,6 +133,10 @@ def run(args, stop_event=None, on_event=None):
 
         run_id, sequence = str(uuid.uuid4()), itertools.count()
         capture_lock = threading.RLock()
+        udp_participants = None
+        if getattr(args, 'udp_detection', False) and not (args.demo or args.replay):
+            from .udp import ParticipantCache
+            udp_participants = ParticipantCache()
 
         def persist(frame, queue):
             now = anchor_wall + (time.monotonic() - anchor_mono) * 1000
@@ -155,9 +159,12 @@ def run(args, stop_event=None, on_event=None):
                     reader.close()
                 stop.wait(.1)
                 continue
-            if args.udp and udp_thread is None:
+            if (args.udp or udp_participants) and udp_thread is None:
                 from .udp import receive
-                udp_thread = threading.Thread(target=receive, args=(stop,persist,args.spool,args.max_spool_mb,args.udp_port,args.udp_source), name="udp-capture", daemon=True)
+                udp_thread = threading.Thread(target=receive,
+                    args=(stop,persist,args.spool,args.max_spool_mb,args.udp_port,args.udp_source),
+                    kwargs={'observe': udp_participants.receive if udp_participants else None, 'archive': args.udp},
+                    name="udp-capture", daemon=True)
                 udp_thread.start()
             try:
                 if spool.size_bytes() > args.max_spool_mb * 1024 * 1024:
@@ -183,6 +190,8 @@ def run(args, stop_event=None, on_event=None):
                         frame["original_captured_at_ms"] = replay_frame.get("captured_at_ms")
                     frame.update(source_kind=frame.get("source_kind","shared_memory"), consistent=consistent,
                                  synthetic=bool(args.demo or (replay is not None and replay_frame.get("synthetic"))), replay=bool(args.replay))
+                    if udp_participants:
+                        udp_participants.annotate(frame)
                     if not capture_allowed.is_set():
                         continue
                     with capture_lock:

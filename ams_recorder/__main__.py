@@ -36,6 +36,8 @@ def main():
     record.add_argument("--duration", type=float)
     record.add_argument("--replay", help="Replay a downloaded raw batch; excluded from league scoring")
     record.add_argument("--udp", action="store_true", help="Also archive raw pCARS2-family UDP datagrams")
+    record.add_argument("--no-ai-detection", dest="udp_detection", action="store_false",
+                        help="Disable human/AI detection from the game's UDP feed")
     record.add_argument("--udp-port", type=int, default=5606)
     record.add_argument("--udp-source", help="Optional game PC IPv4 address filter for UDP")
     send = sub.add_parser("flush", help="Upload all queued batches without starting capture")

@@ -127,7 +127,7 @@ class RecorderWindow:
         self.setup_frame = tk.Frame(self.setup_dialog, background=PAPER, padx=22, pady=12)
         self.setup_frame.pack(fill="both", expand=True)
         tk.Label(self.setup_frame, text="RECORDER SETUP", foreground=MUTED, background=PAPER, font=(family, 9, "bold")).pack(anchor="w", pady=(22, 5))
-        tk.Label(self.setup_frame, text="Link Steam and approve this recorder before recording. AUTO records all driving, including solo practice. The connection is checked while waiting for race data.", foreground=MUTED, background=PAPER, font=(family, 9), wraplength=470, justify="left").pack(anchor="w", pady=(0, 8))
+        tk.Label(self.setup_frame, text="Link Steam before recording. AUTO captures all driving. For Human/AI labels, enable Project CARS 2 UDP and a nonzero UDP frequency in AMS2.", foreground=MUTED, background=PAPER, font=(family, 9), wraplength=470, justify="left").pack(anchor="w", pady=(0, 8))
         self.server = tk.StringVar(value=DEFAULT_SERVER)
         self.event_code = tk.StringVar(value="AUTO")
         self.entries = []
@@ -279,7 +279,7 @@ class RecorderWindow:
         self.status.update("started")
         args = SimpleNamespace(config=str(self.config_path), spool=str(self.spool_path), hz=60, batch_seconds=2,
                                max_spool_mb=2048, demo=self.demo, demo_offset=91, duration=None,
-                               replay=None, udp=False, udp_port=5606, udp_source=None)
+                               replay=None, udp=False, udp_detection=True, udp_port=5606, udp_source=None)
 
         def record():
             try:

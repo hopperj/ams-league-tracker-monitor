@@ -51,13 +51,15 @@ python -m ams_recorder flush
 
 The default ceiling is 60 snapshots per second, with uploads about every two seconds. Actual capture is bounded by the game's publishing rate, disk speed and unchanged snapshots. `flush` sends saved batches without starting capture and still verifies upload access.
 
-To archive UDP too, enable **UDP Protocol Version: Project CARS 2** and a nonzero UDP frequency in AMS2:
+For automatic Human/AI labels, enable **UDP Protocol Version: Project CARS 2** and a nonzero UDP frequency in AMS2. Keep shared memory enabled. The monitor checks the UDP roster and car positions against its shared-memory snapshots before uploading the game’s participant flags. Missing, unsupported and unmatched UDP data leaves the type unknown. The webapp can also identify the local driver from a Steam-linked personal recording. See the [AMS2 UDP layout reference](https://github.com/RangeyRover/Automobilista-2-Auto-Director/blob/main/SMS_UDP_Definitions_AMS2_RR.hpp).
+
+The monitor listens on UDP port 5606 for detection. `--no-ai-detection` turns detection off for CLI capture, and `--udp-source GAME_PC_IP` restricts intake to one PC. To also archive all raw UDP datagrams:
 
 ```sh
 python -m ams_recorder run --udp
 ```
 
-UDP datagrams are retained without guessed decoding. `--udp-source GAME_PC_IP` restricts intake to one PC. UDP loss or port conflicts do not stop shared-memory capture.
+UDP loss or port conflicts leave shared-memory capture available.
 
 ## Data preservation and identity
 

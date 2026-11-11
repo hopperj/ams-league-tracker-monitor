@@ -2,6 +2,10 @@
 
 Changes are listed newest first. Entries under Unreleased describe source changes that have not yet been published as a tagged download.
 
+## Unreleased
+
+- Detect human and AI participants using matched AMS2 UDP names and timing packets alongside shared memory. Upload evidence for the webapp to verify.
+
 ## 0.6.0
 
 ### Added
