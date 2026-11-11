@@ -143,7 +143,7 @@ class TransportTest(unittest.TestCase):
 @unittest.skipUnless(os.name=="nt","Win32 mapping API is tested on Windows CI")
 class WindowsMemoryTest(unittest.TestCase):
     def test_readonly_mapping_and_consistent_snapshot(self):
-        from ams_recorder.memory import MemoryReader
+        from ams_recorder.memory import MemoryReader, SnapshotBusy
         from ctypes import wintypes as W
         api=C.WinDLL("kernel32",use_last_error=True)
         api.CreateFileMappingW.argtypes=[W.HANDLE,C.c_void_p,W.DWORD,W.DWORD,W.DWORD,W.LPCWSTR]
@@ -158,6 +158,11 @@ class WindowsMemoryTest(unittest.TestCase):
         self.assertTrue(address)
         reader=MemoryReader(name)
         try:
+            C.memmove(address,raw,len(raw))
+            sequence=C.c_uint32.from_address(address+SEQUENCE_OFFSET)
+            sequence.value|=1
+            with self.assertRaises(SnapshotBusy):
+                reader.read()
             C.memmove(address,raw,len(raw))
             captured,consistent=reader.read()
             self.assertTrue(consistent)

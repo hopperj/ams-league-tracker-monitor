@@ -84,6 +84,19 @@ class StatusTest(unittest.TestCase):
         self.status.update('capture_wait', message='Waiting for AMS2.', waiting=True)
         self.assertEqual(self.status.snapshot().color, 'green')
 
+    def test_brief_snapshot_retry_stays_recording_and_sustained_contention_turns_amber(self):
+        self.recording()
+        message = 'No consistent snapshot available; retrying'
+        self.status.update('snapshot_retry', message=message)
+        self.now += .1
+        self.assertEqual(self.status.snapshot().color, 'red')
+        self.status.update('snapshot_retry', message=message)
+        self.now += .16
+        self.assertEqual(self.status.snapshot().color, 'amber')
+        self.assertEqual(self.status.snapshot().detail, message)
+        self.status.update('snapshot_read')
+        self.assertEqual(self.status.snapshot().color, 'red')
+
     def test_stopping_and_stopped_are_gray_fatal_is_amber(self):
         self.recording()
         self.status.update('stopping')

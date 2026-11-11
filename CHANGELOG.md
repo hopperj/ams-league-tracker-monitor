@@ -4,7 +4,10 @@ Changes are listed newest first. Entries under Unreleased describe source change
 
 ## Unreleased
 
+## 0.6.1
+
 - Detect human and AI participants using matched AMS2 UDP names and timing packets alongside shared memory. Upload evidence for the webapp to verify.
+- Retry a busy AMS2 shared-memory snapshot at the next capture tick. Brief contention keeps the recording indicator steady, and sustained contention still shows amber.
 
 ## 0.6.0
 

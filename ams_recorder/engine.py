@@ -13,7 +13,7 @@ import uuid
 
 from .configuration import prepare_configuration
 from .decoder import decode
-from .memory import MemoryReader, MemoryUnavailable
+from .memory import MemoryReader, MemoryUnavailable, SnapshotBusy
 from .spool import Spool
 from .status import receipt_notice, upload_problem
 from .transport import Transport
@@ -150,6 +150,7 @@ def run(args, stop_event=None, on_event=None):
         thread = threading.Thread(target=upload, name="uploader", daemon=True)
         thread.start()
         last_raw, last_warning, next_tick = None, 0, start
+        snapshot_busy = False
         LOG.info("Recorder started for %s at up to %s Hz; capture waits for verified Steam upload access; code %s", "synthetic demo" if args.demo else "AMS2", args.hz, config["event_code"])
         while not stop.is_set():
             if args.duration and time.monotonic() - start >= args.duration:
@@ -183,6 +184,9 @@ def run(args, stop_event=None, on_event=None):
                     if reader is None:
                         reader = MemoryReader()
                     raw, consistent = reader.read()
+                    if snapshot_busy:
+                        report("snapshot_read")
+                        snapshot_busy = False
                 if raw != last_raw:
                     frame = dict(replay_frame) if replay is not None else decode(raw,
                         capture_name if args.demo else None if config.get('auto_registration') else config['driver_name'])
@@ -202,11 +206,16 @@ def run(args, stop_event=None, on_event=None):
                     if reader and frame.get("game_state") == 0:
                         reader.close()
             except MemoryUnavailable as exc:
-                report("capture_wait", message=str(exc), waiting=str(exc).startswith('Waiting for AMS2.'))
+                snapshot_busy = isinstance(exc, SnapshotBusy)
+                if snapshot_busy:
+                    report("snapshot_retry", message=str(exc))
+                else:
+                    report("capture_wait", message=str(exc), waiting=str(exc).startswith('Waiting for AMS2.'))
                 if time.monotonic() - last_warning > 10:
                     LOG.warning("%s", exc)
                     last_warning = time.monotonic()
-                stop.wait(.25)
+                if not snapshot_busy:
+                    stop.wait(.25)
             next_tick = max(next_tick + 1 / args.hz, time.monotonic())
             stop.wait(max(0, next_tick - time.monotonic()))
     except Exception:

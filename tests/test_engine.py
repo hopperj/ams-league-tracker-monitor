@@ -13,7 +13,8 @@ from ams_recorder.configuration import save_configuration
 from ams_recorder.engine import run
 from ams_recorder.spool import Spool
 from ams_recorder.status import RecorderStatus
-from ams_recorder.memory import MemoryUnavailable
+from ams_recorder.demo import snapshot
+from ams_recorder.memory import MemoryUnavailable, SnapshotBusy
 
 
 class EngineTest(unittest.TestCase):
@@ -208,6 +209,47 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(self.received, {})
         self.assertTrue(colors)
         self.assertEqual(set(colors), {'green'})
+
+    def test_busy_snapshot_retries_at_capture_cadence_and_recovers_on_a_repeat(self):
+        self.args.demo = False
+        self.args.hz = 60
+        self.args.duration = 3
+        status = RecorderStatus()
+        capture_thread = threading.current_thread()
+        waits, events = [], []
+        retrying = False
+
+        class CaptureStop(threading.Event):
+            def wait(self, timeout=None):
+                if threading.current_thread() is capture_thread and retrying:
+                    waits.append(timeout)
+                return super().wait(timeout)
+
+        stop = CaptureStop()
+
+        def progress(kind, **values):
+            nonlocal retrying
+            events.append(kind)
+            status.update(kind, **values)
+            if kind == 'snapshot_retry':
+                retrying = True
+                self.assertEqual(status.snapshot().color, 'red')
+            elif kind == 'snapshot_read':
+                retrying = False
+            elif kind == 'captured' and events.count('captured') == 2:
+                stop.set()
+
+        first = snapshot(91)
+        with patch('ams_recorder.engine.MemoryReader') as reader:
+            reader.return_value.read.side_effect = [
+                (first, True), SnapshotBusy('No consistent snapshot available; retrying'),
+                (first, True), (snapshot(91.05), True),
+            ]
+            run(self.args, stop, progress)
+        self.assertEqual([kind for kind in events if kind.startswith('snapshot_') or kind == 'captured'],
+                         ['captured', 'snapshot_retry', 'snapshot_read', 'captured'])
+        self.assertTrue(waits)
+        self.assertTrue(all(0 <= timeout <= 1 / self.args.hz + .001 for timeout in waits))
 
     def test_upload_failure_does_not_mask_pending_data_with_successful_probe(self):
         self.failures = 1;self.args.duration = 10

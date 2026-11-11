@@ -11,6 +11,10 @@ class MemoryUnavailable(Exception):
     pass
 
 
+class SnapshotBusy(MemoryUnavailable):
+    """AMS2 is updating the shared-memory snapshot."""
+
+
 class MemoryReader:
     def __init__(self, name="$pcars2$"):
         if os.name != "nt":
@@ -70,7 +74,7 @@ class MemoryReader:
             after = C.c_uint32.from_address(self.address + SEQUENCE_OFFSET).value
             if before == after and struct.unpack_from("<I", raw, SEQUENCE_OFFSET)[0] == before:
                 return raw, True
-        raise MemoryUnavailable("No consistent snapshot available; retrying")
+        raise SnapshotBusy("No consistent snapshot available; retrying")
 
     def close(self):
         if self.address:

@@ -5,6 +5,9 @@ import time
 import urllib.error
 
 
+SNAPSHOT_WARNING_SECONDS = 0.25
+
+
 def upload_problem(error):
     if isinstance(error, urllib.error.HTTPError):
         message=vars(error).get("server_message")
@@ -59,6 +62,7 @@ class RecorderStatus:
         self.problem = None
         self.capture_error = None
         self.capture_reason = None
+        self.snapshot_retry = None
         self.upload_error = None
         self.comms_error = None
         self.link_required = False
@@ -74,6 +78,7 @@ class RecorderStatus:
             if kind == "started":
                 self.mode = "recording"
                 self.problem = self.capture_error = self.capture_reason = self.upload_error = None
+                self.snapshot_retry = None
                 self.comms_error = None
                 self.link_required = False
                 self.last_comms = None
@@ -84,6 +89,7 @@ class RecorderStatus:
             elif kind == "captured":
                 self.last_capture = None
                 self.capture_error = None
+                self.snapshot_retry = None
                 if not values.get("decoded"):
                     self.capture_reason = "AMS2 data format is unsupported. Raw data is being saved."
                 elif not values.get("consistent"):
@@ -96,10 +102,16 @@ class RecorderStatus:
                     self.capture_reason = None
                     self.last_capture = at
             elif kind == "capture_wait":
+                self.snapshot_retry = None
                 self.capture_error = None if values.get('waiting') else values['message']
                 if values.get('waiting'):
                     self.capture_reason = None
                 self.last_capture = None
+            elif kind == "snapshot_retry":
+                if self.snapshot_retry is None:
+                    self.snapshot_retry = (at, values["message"])
+            elif kind == "snapshot_read":
+                self.snapshot_retry = None
             elif kind == 'comms_ok':
                 self.last_comms = at
                 self.comms_error = None
@@ -167,6 +179,8 @@ class RecorderStatus:
             elif self.capture_reason:
                 title = 'Capture problem'
                 detail = self.capture_reason
+            elif self.snapshot_retry is not None and now - self.snapshot_retry[0] >= SNAPSHOT_WARNING_SECONDS:
+                title, detail = 'Capture problem', self.snapshot_retry[1]
             elif self.pending and self.last_upload is not None and now - self.last_upload > self.fresh_seconds:
                 title = 'Upload problem'
                 detail = "No recent upload confirmation. Check the connection; data stays saved."
