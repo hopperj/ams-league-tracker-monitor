@@ -6,6 +6,17 @@ import urllib.parse
 import urllib.error
 import urllib.request
 
+DEFAULT_SERVER = 'https://ams2.ioresearch.ca'
+LEGACY_SERVER = DEFAULT_SERVER + ':5443'
+
+
+def canonical_server(server):
+    """Treat the two HTTPS ports of the league service as one destination."""
+    origin = server.rstrip('/')
+    if origin.lower() in (LEGACY_SERVER, DEFAULT_SERVER + ':443'):
+        return DEFAULT_SERVER
+    return origin
+
 
 class Transport:
     def __init__(self, server, token):

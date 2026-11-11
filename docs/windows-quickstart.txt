@@ -10,7 +10,7 @@ compilation is required.
 2. In AMS2, select Options > System > Shared Memory > Project CARS 2.
 3. Sign in with Steam and approve this recorder in the browser. Use Link Steam
    account if approval does not open. Recording waits for server confirmation.
-4. Setup is optional. The default server is https://ams2.ioresearch.ca:5443.
+4. Setup is optional. The default server is https://ams2.ioresearch.ca.
    Leave the capture code as AUTO to record all sessions. Existing settings
    and queued data continue working when upgrading from an older version.
 

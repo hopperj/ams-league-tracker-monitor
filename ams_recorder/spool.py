@@ -6,6 +6,8 @@ import time
 import uuid
 from pathlib import Path
 
+from .transport import canonical_server
+
 
 def encode(value):
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
@@ -33,16 +35,19 @@ class Spool:
         """)
 
     def check_destination(self, server, recorder_id):
-        destination = server.rstrip("/") + "|" + recorder_id
+        destination = canonical_server(server) + "|" + recorder_id
         row = self.db.execute("SELECT value FROM metadata WHERE key='destination'").fetchone()
-        if row and row[0] != destination:
-            raise ValueError("This spool belongs to another server/recorder. Use a different --spool directory.")
+        if row:
+            saved_server, separator, saved_recorder = row[0].partition('|')
+            if not separator or canonical_server(saved_server) + '|' + saved_recorder != destination:
+                raise ValueError("This spool belongs to another server/recorder. Use a different --spool directory.")
         return destination
 
     def bind(self, server, recorder_id):
-        destination = self.check_destination(server, recorder_id)
         with self.db:
-            self.db.execute("INSERT OR IGNORE INTO metadata VALUES('destination',?)", (destination,))
+            self.db.execute('BEGIN IMMEDIATE')
+            destination = self.check_destination(server, recorder_id)
+            self.db.execute("INSERT OR REPLACE INTO metadata VALUES('destination',?)", (destination,))
 
     def append(self, event_code, run_id, frame):
         with self.db:

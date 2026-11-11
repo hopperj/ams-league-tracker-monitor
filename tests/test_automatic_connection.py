@@ -12,6 +12,7 @@ from ams_recorder.decoder import decode
 from ams_recorder.demo import snapshot
 from ams_recorder.schema import SharedMemory
 from ams_recorder.spool import Spool
+from ams_recorder.transport import DEFAULT_SERVER, LEGACY_SERVER
 
 
 class AutomaticConnectionTest(unittest.TestCase):
@@ -55,6 +56,34 @@ class AutomaticConnectionTest(unittest.TestCase):
         self.config.write_text('{corrupt')
         with self.assertRaises(ValueError):prepare_configuration(self.config,self.spool,self.server)
         self.assertEqual(self.config.read_text(),'{corrupt')
+
+    def test_port_migration_preserves_link_identity_and_exact_queued_batch(self):
+        previous = dict(server=LEGACY_SERVER, token='linked-token', recorder_id='linked-recorder',
+                        driver_name='Alex', event_code='AUTO', account_linked=True, account_name='Alex')
+        save_configuration(self.config, previous)
+        queue = Spool(self.spool)
+        with queue.db:
+            queue.db.execute("INSERT INTO metadata VALUES('destination', ?)",
+                             (LEGACY_SERVER + '|linked-recorder',))
+        queue.append('AUTO', 'run', {'sequence': 0})
+        batch = queue.batch(previous['recorder_id'])
+        queue.close()
+
+        expected = dict(previous, server=DEFAULT_SERVER)
+        self.assertEqual(prepare_configuration(self.config, self.spool), expected)
+        self.assertEqual(load_configuration(self.config), expected)
+        self.assertEqual(prepare_configuration(self.config, self.spool, LEGACY_SERVER), expected)
+        queue = Spool(self.spool)
+        try:
+            self.assertEqual(queue.batch(previous['recorder_id']), batch)
+            self.assertEqual(queue.db.execute("SELECT value FROM metadata WHERE key='destination'").fetchone()[0],
+                             DEFAULT_SERVER + '|linked-recorder')
+            with self.assertRaises(ValueError):
+                queue.bind('https://other.example:5443', previous['recorder_id'])
+            with self.assertRaises(ValueError):
+                queue.bind(LEGACY_SERVER, 'another-recorder')
+        finally:
+            queue.close()
 
     def test_two_first_launches_share_the_same_durable_identity(self):
         Spool(self.spool).close()

@@ -7,9 +7,7 @@ import tempfile
 import secrets
 import uuid
 
-from .transport import Transport
-
-DEFAULT_SERVER = "https://ams2.ioresearch.ca:5443"
+from .transport import DEFAULT_SERVER, Transport, canonical_server
 
 
 def defaults():
@@ -79,8 +77,9 @@ def prepare_configuration(path, spool_path, server=None, event=None):
     server = server if server is not None else previous['server'] if previous else DEFAULT_SERVER
     event = event if event is not None else previous['event_code'] if previous else 'AUTO'
     server, _, event = connection_values(server, 'automatic', event)
-    if previous and previous['server'] == server:
-        config = {**previous, 'event_code': event}
+    server = canonical_server(server)
+    if previous and canonical_server(previous['server']) == server:
+        config = {**previous, 'server': server, 'event_code': event}
     else:
         config = dict(server=server, event_code=event, token=secrets.token_urlsafe(32),
                       recorder_id=str(uuid.uuid4()), driver_name='Waiting for AMS2', auto_registration=True)
@@ -92,7 +91,7 @@ def prepare_configuration(path, spool_path, server=None, event=None):
             if previous is not None or not Path(path).exists():
                 raise
             config = load_configuration(path)
-            if config['server'] != server:
+            if canonical_server(config['server']) != server:
                 raise ValueError('Another window saved a different server connection. Reopen the app.')
             spool.check_destination(server, config['recorder_id'])
         if previous is None and (spool.pending() or spool.db.execute('SELECT count(*) FROM outbox').fetchone()[0]):
@@ -100,7 +99,7 @@ def prepare_configuration(path, spool_path, server=None, event=None):
         if previous is None:
             if not save_configuration(path, config, exclusive=True):
                 config = load_configuration(path)
-                if config['server'] != server:
+                if canonical_server(config['server']) != server:
                     raise ValueError('Another window saved this recorder setup. Reopen the app to use its saved connection.')
                 spool.check_destination(server, config['recorder_id'])
         elif config != previous:

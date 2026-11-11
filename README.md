@@ -8,7 +8,7 @@ The source version is **0.6.0**. Its Steam requirement, health checks and status
 
 ## Driver setup
 
-1. Sign in through Steam at [AMS League](https://ams2.ioresearch.ca:5443/#account) and choose **Download my Windows recorder**, or download the generic Windows ZIP from GitHub.
+1. Sign in through Steam at [AMS League](https://ams2.ioresearch.ca/account) and choose **Download my Windows recorder**, or download the generic Windows ZIP from GitHub.
 2. Extract the ZIP and run `AMSLeagueRecorder-Windows-x64-Intel-AMD.exe`. The same x64 build works on Intel and AMD Windows PCs; Python and Tk are bundled.
 3. Approve the recorder in your browser under your Steam account. Existing installations and generic downloads use **Link Steam account**. Website sign-in alone does not approve a recorder.
 4. In AMS2, select **Options → System → Shared Memory → Project CARS 2**.
@@ -42,7 +42,7 @@ python -m ams_recorder.gui
 Optional setup and command-line recording:
 
 ```sh
-python -m ams_recorder configure --server https://ams2.ioresearch.ca:5443
+python -m ams_recorder configure --server https://ams2.ioresearch.ca
 # Approve Link Steam account in the window before recording from the CLI.
 python -m ams_recorder run
 python -m ams_recorder run --hz 120 --batch-seconds 5

@@ -27,7 +27,7 @@ Use an administrator recovery token file and a private work directory:
 
 ```sh
 python tools/seed_spa_race.py \
-  --server https://ams2.ioresearch.ca:5443 \
+  --server https://ams2.ioresearch.ca \
   --admin-token-file /private/path/admin-token \
   --work /private/path/spa-synthetic-checkpoint
 ```

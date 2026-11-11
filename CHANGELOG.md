@@ -2,7 +2,7 @@
 
 Changes are listed newest first. Entries under Unreleased describe source changes that have not yet been published as a tagged download.
 
-## Unreleased — 0.6.0
+## 0.6.0
 
 ### Added
 
@@ -17,6 +17,7 @@ Changes are listed newest first. Entries under Unreleased describe source change
 
 ### Changed
 
+- Connect to the league on standard HTTPS port 443. Saved league connections switch ports while keeping the same Steam link and queued batches.
 - Green means **Comms open, awaiting race data**; red means **Recording in progress**; amber means an error or required attention; gray means checking or stopped.
 - Browser approval is required before recording. Generic installations open linking automatically, and existing credentials and queues are preserved.
 - Personalized setup files remain single-use but never expire, including older unused downloads.

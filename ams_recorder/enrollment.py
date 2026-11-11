@@ -8,7 +8,7 @@ import sys
 import urllib.error
 
 from .configuration import load_configuration, prepare_configuration, save_configuration
-from .transport import Transport
+from .transport import Transport, canonical_server
 
 
 def enrollment_path():
@@ -24,7 +24,7 @@ def read_enrollment(path):
     if not isinstance(value,dict) or value.get('schema_version')!=1 or not isinstance(value.get('enrollment_token'),str) or not re.fullmatch(r'[A-Za-z0-9_-]{43,128}',value['enrollment_token']):
         raise ValueError('Personalized setup file is unreadable; use Link Steam account instead.')
     if not isinstance(value.get('server'),str):raise ValueError('Invalid personalized server')
-    value['server']=Transport(value['server'],'validation-only').server
+    value['server']=canonical_server(Transport(value['server'],'validation-only').server)
     return value
 
 
