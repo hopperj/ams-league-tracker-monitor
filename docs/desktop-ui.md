@@ -1,14 +1,14 @@
 # Recorder desktop window
 
-The desktop client is implemented in `ams_recorder/gui.py`, using Python's [Tkinter](https://docs.python.org/3/library/tkinter.html). It keeps the main window small: driver/session identity, one red/green light, a status explanation, last-upload age, queued sample count, and Start/Stop controls. Connection settings are in a separate setup window. Labels explain the state independently of colour.
+The desktop client is implemented in `ams_recorder/gui.py`, using Python's [Tkinter](https://docs.python.org/3/library/tkinter.html). The window shows driver and session identity, one status light, an explanation, last-upload age, queued sample count, and Start/Stop controls. Connection settings are in a separate setup window.
 
 ## Meaning of the light
 
-Green means that the recorder recently captured consistent, supported data from a live or paused driving session and received a matching batch acknowledgement from the server. The response must contain the expected batch ID, boolean `accepted: true`, and `stored: true` when supplied by the server. The local queue acknowledgement must commit before a success event is emitted.
+Green means the server confirmed upload access and the recorder is waiting for driving data. Red means it is recording. Gray covers checking, updating and stopped states. A successful upload requires the expected batch ID, `accepted: true`, and `stored: true` when supplied by the server. The recorder commits the local queue acknowledgement before reporting success.
 
-A successful credential check or clock sync does not turn the light green. Old uploads cannot leave it green indefinitely. The default capture/upload freshness threshold is 10 seconds; a queue above 240 samples shows a red catch-up condition. Network failures, rejected credentials, unsupported data, game absence, stopped recording, and local storage failures also produce red with explanatory text.
+Amber appears when the recorder has detected a continuous problem for three seconds. The title and detail explain the issue immediately. The light holds its previous healthy colour during the delay while recording. A recovery clears the timer.
 
-An acknowledged upload with processing warnings shows **Data saved — review** in red, with the server's explanation. This includes late uploads to closed sessions and unknown capture codes. The original is saved on the server, the corresponding local queue entry clears, and later uploads continue. Open **Data received** in the dashboard to review or recover those captures. A later clean acknowledgement clears the notice. Transmission confirmation does not establish that classification is complete or every telemetry field is populated.
+An acknowledged upload with processing warnings shows **Data saved — review** with the server's explanation. This includes late uploads to closed sessions and unknown capture codes. The original is saved on the server, the corresponding local queue entry clears, and later uploads continue. Open **Data received** in the dashboard to review or recover those captures. A later clean acknowledgement clears the notice.
 
 `engine.py` publishes structured capture/upload events. `status.py` turns those into an immutable indicator snapshot under a lock. The desktop polls that snapshot every 200 ms. Network, recording, and configuration work run off the UI thread; all Tk widget updates occur on the UI thread. The uploader has its own SQLite connection. The engine installs process signal handlers only when invoked from the main thread, so it can also run inside a GUI worker.
 

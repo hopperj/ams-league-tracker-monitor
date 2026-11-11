@@ -97,7 +97,7 @@ class RecorderWindow:
             self.detail_label.configure(wraplength=width)
             self.title_label.configure(wraplength=width)
         card.bind("<Configure>", resize_status)
-        tk.Label(body, text='Green: ready  ·  Red: recording  ·  Amber: needs attention',
+        tk.Label(body, text='Green: ready  ·  Red: recording  ·  Amber: sustained issue',
                  foreground=MUTED, background=PAPER, font=(family, 9)).pack(anchor='w', pady=(8, 0))
         metrics = tk.Frame(body, background=PAPER)
         metrics.pack(fill="x", pady=(11, 15))

@@ -60,7 +60,7 @@ def main():
 
 Open the recorder and approve **Link Steam account** in your browser before recording. Personalized downloads open approval automatically. No key is copied manually. The server verifies your link and upload access before capture starts, and checks communication every five seconds while waiting for AMS2. Existing saved credentials and queued data are preserved. Use **AUTO** for all driving sessions. League-night approval is managed separately on the website. The default server is https://ams2.ioresearch.ca. Enable AMS2's **Shared Memory: Project CARS 2** setting.
 
-The light is **green** for **Comms open, awaiting race data**, **red** for **Recording in progress**, **amber** for errors or required attention, and **gray** while checking or stopped. Failed deliveries stay queued locally; saved processing notes show **Data saved — review**. Older clients also require a Steam link to upload to the updated server.
+The light is **green** for **Comms open, awaiting race data**, **red** for **Recording in progress**, **amber** after three continuous seconds of trouble, and **gray** while checking or stopped. The status text explains problems immediately. Failed deliveries stay queued locally. Saved processing notes show **Data saved — review**. Older clients also require a Steam link to upload to the updated server.
 
 The packaged Windows recorder checks for published updates at startup, verifies their checksum and packaged window, and restarts before recording. Steam linking, installation credentials, settings and queued bytes are preserved; an ordinary update does not require another Steam sign-in. Use **Skip update & start** to continue with the installed version. Source and portable Python runs are updated manually.
 

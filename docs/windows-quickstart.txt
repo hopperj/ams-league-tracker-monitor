@@ -16,7 +16,8 @@ compilation is required.
 
 Green / Comms open, awaiting race data means upload access is verified.
 Red / Recording in progress means live game data is being recorded and sent.
-Amber means a problem needs attention; read the message for the cause.
+Amber means a problem has persisted for three seconds. The message shows the
+cause as soon as the recorder detects it.
 Gray means checking, stopping or stopped. Communication is checked every five
 seconds, even when AMS2 is closed. Data saved - review means the server saved
 the upload but has processing notes; later uploads continue.

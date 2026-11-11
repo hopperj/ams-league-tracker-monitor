@@ -45,8 +45,9 @@ class StatusTest(unittest.TestCase):
         self.recording()
         self.status.update('upload_error', message='Upload failed')
         self.status.update('comms_ok')
-        self.assertEqual(self.status.snapshot().color, 'amber')
+        self.assertEqual(self.status.snapshot().color, 'red')
         self.assertEqual(self.status.snapshot().title, 'Upload problem')
+        self.now += 3
         self.status.update('queued', pending=0)
         self.assertEqual(self.status.snapshot().color, 'amber')
         self.status.update('uploaded', pending=0)
@@ -55,6 +56,9 @@ class StatusTest(unittest.TestCase):
     def test_stale_or_failed_comms_are_amber_and_probe_can_recover_them(self):
         self.ready()
         self.now += 11
+        self.assertEqual(self.status.snapshot().color, 'green')
+        self.assertEqual(self.status.snapshot().title, 'Connection problem')
+        self.now += 3
         self.assertEqual(self.status.snapshot().color, 'amber')
         self.status.update('comms_error', message='Cannot reach server')
         self.status.update('uploaded', pending=0)
@@ -65,21 +69,30 @@ class StatusTest(unittest.TestCase):
     def test_link_required_overrides_previous_healthy_capture(self):
         self.recording()
         self.status.update('link_required', message='Approve Steam connection')
-        self.assertEqual(self.status.snapshot().color, 'amber')
+        self.assertEqual(self.status.snapshot().color, 'red')
         self.assertEqual(self.status.snapshot().title, 'Steam link required')
+        self.now += 3
+        self.assertEqual(self.status.snapshot().color, 'amber')
         self.status.update('comms_ok')
         self.assertEqual(self.status.snapshot().color, 'green')
 
     def test_capture_errors_unsupported_data_and_queue_pressure_are_amber(self):
         self.recording()
         self.status.update('capture_wait', message='Disk full')
+        self.assertEqual(self.status.snapshot().color, 'red')
+        self.assertEqual(self.status.snapshot().detail, 'Disk full')
+        self.now += 3
         self.assertEqual(self.status.snapshot().color, 'amber')
         self.status.update('captured', decoded=True, consistent=True, game_state=2)
         self.status.update('uploaded', pending=2000)
+        self.assertEqual(self.status.snapshot().color, 'red')
+        self.now += 3
         self.assertEqual(self.status.snapshot().color, 'amber')
         self.status.update('uploaded', pending=0)
         self.assertEqual(self.status.snapshot().color, 'red')
         self.status.update('captured', decoded=False, consistent=False, game_state=2)
+        self.assertEqual(self.status.snapshot().color, 'red')
+        self.now += 3
         self.assertEqual(self.status.snapshot().color, 'amber')
         self.status.update('capture_wait', message='Waiting for AMS2.', waiting=True)
         self.assertEqual(self.status.snapshot().color, 'green')
@@ -90,8 +103,11 @@ class StatusTest(unittest.TestCase):
         self.status.update('snapshot_retry', message=message)
         self.now += .1
         self.assertEqual(self.status.snapshot().color, 'red')
+        self.assertEqual(self.status.snapshot().detail, message)
         self.status.update('snapshot_retry', message=message)
-        self.now += .16
+        self.now = 102.99
+        self.assertEqual(self.status.snapshot().color, 'red')
+        self.now = 103
         self.assertEqual(self.status.snapshot().color, 'amber')
         self.assertEqual(self.status.snapshot().detail, message)
         self.status.update('snapshot_read')
@@ -105,8 +121,23 @@ class StatusTest(unittest.TestCase):
         self.assertEqual(self.status.snapshot().color, 'gray')
         self.assertIn('saved', self.status.snapshot().detail)
         self.status.update('fatal', message='Disk failed')
-        self.assertEqual(self.status.snapshot().color, 'amber')
+        self.assertEqual(self.status.snapshot().color, 'gray')
         self.assertEqual(self.status.snapshot().detail, 'Disk failed')
+        self.now += 3
+        self.assertEqual(self.status.snapshot().color, 'amber')
+
+    def test_recovery_between_polls_restarts_the_amber_delay(self):
+        self.recording()
+        self.status.update('upload_error', message='Upload failed')
+        self.now += 2
+        self.status.update('uploaded', pending=0)
+        self.status.update('upload_error', message='Upload failed again')
+        self.now += 2
+        self.assertEqual(self.status.snapshot().color, 'red')
+        self.now += 1
+        self.assertEqual(self.status.snapshot().color, 'amber')
+        self.status.update('uploaded', pending=0)
+        self.assertEqual(self.status.snapshot().color, 'red')
 
     def test_http_failure_messages_never_include_provider_credentials(self):
         error = urllib.error.HTTPError('https://league.example', 401, 'secret-token', {}, None)
@@ -119,8 +150,10 @@ class StatusTest(unittest.TestCase):
         notice = receipt_notice({'stored': True, 'processing_status': 'needs_review',
             'warnings': [{'severity': 'warning', 'message': 'All data is saved.'}]})
         self.status.update('uploaded', pending=0, review=notice)
-        self.assertEqual(self.status.snapshot().color, 'amber')
+        self.assertEqual(self.status.snapshot().color, 'red')
         self.assertIn('Data saved', self.status.snapshot().title)
         self.assertIn('All data is saved', self.status.snapshot().detail)
+        self.now += 3
+        self.assertEqual(self.status.snapshot().color, 'amber')
         self.status.update('uploaded', pending=0, review=None)
         self.assertEqual(self.status.snapshot().color, 'red')

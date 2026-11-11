@@ -4,6 +4,10 @@ Changes are listed newest first. Entries under Unreleased describe source change
 
 ## Unreleased
 
+## 0.6.2
+
+- Show amber after a problem persists for three continuous seconds. Show the explanation immediately and reset the delay on recovery.
+
 ## 0.6.1
 
 - Detect human and AI participants using matched AMS2 UDP names and timing packets alongside shared memory. Upload evidence for the webapp to verify.

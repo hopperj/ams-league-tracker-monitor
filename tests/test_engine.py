@@ -257,11 +257,12 @@ class EngineTest(unittest.TestCase):
         def progress(kind, **values):
             status.update(kind, **values)
             if kind == 'comms_ok' and status.upload_error:
-                after_failure.append(status.snapshot().color)
+                indicator = status.snapshot()
+                after_failure.append((indicator.color, indicator.title))
             if kind == 'uploaded': stop.set()
         with patch('ams_recorder.engine.HEALTH_SECONDS', .05):
             run(self.args, stop, progress)
-        self.assertEqual(after_failure, ['amber'])
+        self.assertEqual(after_failure, [('red', 'Upload problem')])
 
     def test_lost_link_pauses_capture_and_preserves_the_queue(self):
         self.args.duration = 10;stop = threading.Event();events = []

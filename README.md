@@ -4,7 +4,7 @@ Windows recorder for Automobilista 2. It preserves complete shared-memory snapsh
 
 [Download published Windows builds](https://github.com/hopperj/ams-league-tracker-monitor/releases/latest) · [Changelog](CHANGELOG.md) · [Upload protocol](docs/protocol-v1.md)
 
-The source version is **0.6.1**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
+The source version is **0.6.2**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
 
 ## Driver setup
 
@@ -24,7 +24,7 @@ The personalized setup file is single-use and has no expiry. Browser approval li
 | --- | --- | --- |
 | Green | **Comms open, awaiting race data** | Steam link, upload permission and a committed storage write were verified; waiting for live driving data. |
 | Red | **Recording in progress** | Live game data is being recorded and sent. |
-| Amber | **Needs attention** | A link, communication, capture or upload problem needs attention; read the message. |
+| Amber | **Needs attention** | A problem has persisted for three continuous seconds. The text explains the cause as soon as it occurs. |
 | Gray | **Checking connection**, **Stopping** or **Not recording** | The recorder is checking access or is stopped. |
 
 The recorder sends an authenticated gzip POST to `/api/recorder/health` every five seconds, including while AMS2 is closed. The server uses the same access checks as uploads, commits a bounded heartbeat row and echoes a fresh challenge. Probes create no race sessions or capture receipts. A successful probe cannot clear a failed data upload: that batch must receive a valid acknowledgement.

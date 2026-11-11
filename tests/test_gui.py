@@ -41,6 +41,8 @@ class WindowTest(unittest.TestCase):
 
     def test_light_and_accessible_text_follow_confirmed_status(self):
         status=self.window.status
+        now=100
+        status.clock=lambda:now
         status.update('started');status.update('comms_ok')
         self.window.poll()
         self.assertEqual(self.window.light.itemcget(self.window.bulb,'fill'),GREEN)
@@ -52,8 +54,11 @@ class WindowTest(unittest.TestCase):
         self.assertEqual(self.window.title.get(),"Recording in progress")
         status.update("upload_error",message="Connection unavailable")
         self.window.poll()
-        self.assertEqual(self.window.light.itemcget(self.window.bulb,"fill"),AMBER)
+        self.assertEqual(self.window.light.itemcget(self.window.bulb,"fill"),RED)
         self.assertEqual(self.window.detail.get(),"Connection unavailable")
+        now+=3
+        self.window.poll()
+        self.assertEqual(self.window.light.itemcget(self.window.bulb,"fill"),AMBER)
 
     def test_background_capture_start_and_stop_keep_the_window_responsive(self):
         self.window.auto_link_attempted=True

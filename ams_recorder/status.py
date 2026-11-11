@@ -5,7 +5,7 @@ import time
 import urllib.error
 
 
-SNAPSHOT_WARNING_SECONDS = 0.25
+AMBER_AFTER_SECONDS = 3
 
 
 def upload_problem(error):
@@ -71,6 +71,8 @@ class RecorderStatus:
         self.last_upload = None
         self.last_comms = None
         self.pending = 0
+        self.attention_since = None
+        self.healthy_color = 'gray'
 
     def update(self, kind, **values):
         with self.lock:
@@ -108,8 +110,7 @@ class RecorderStatus:
                     self.capture_reason = None
                 self.last_capture = None
             elif kind == "snapshot_retry":
-                if self.snapshot_retry is None:
-                    self.snapshot_retry = (at, values["message"])
+                self.snapshot_retry = values["message"]
             elif kind == "snapshot_read":
                 self.snapshot_retry = None
             elif kind == 'comms_ok':
@@ -136,63 +137,83 @@ class RecorderStatus:
                 self.problem = values["message"]
             if "pending" in values:
                 self.pending = values["pending"]
+            # A recovery between UI polls must reset the warning delay.
+            self._track_attention(at)
+
+    def _attention(self, now):
+        if self.problem:
+            return 'Recorder error', self.problem
+        if self.mode != 'recording':
+            return None
+        if self.link_required:
+            return 'Steam link required', self.comms_error
+        if self.upload_error:
+            return 'Upload problem', self.upload_error
+        if self.comms_error:
+            return 'Connection problem', self.comms_error
+        if self.last_comms is None:
+            return None
+        if now - self.last_comms > self.fresh_seconds:
+            return 'Connection problem', 'Upload access has not been confirmed recently. Retrying the connection.'
+        if self.server_notice:
+            return 'Data saved — review', self.server_notice
+        capture_problem = self.capture_error or self.capture_reason or self.snapshot_retry
+        if capture_problem:
+            return 'Capture problem', capture_problem
+        if self.pending and self.last_upload is not None and now - self.last_upload > self.fresh_seconds:
+            return 'Upload problem', 'No recent upload confirmation. Check the connection; data stays saved.'
+        if self.pending > self.max_pending:
+            return 'Catching up on saved data', 'Catching up on saved data. Keep the recorder running.'
+        return None
+
+    def _track_attention(self, now):
+        attention = self._attention(now)
+        if attention is None:
+            self.attention_since = None
+            if self.mode != 'recording' or self.last_comms is None:
+                self.healthy_color = 'gray'
+            elif self.last_capture is not None and now - self.last_capture <= self.fresh_seconds:
+                self.healthy_color = 'red'
+            else:
+                self.healthy_color = 'green'
+        elif self.attention_since is None:
+            self.attention_since = now
+        return attention
 
     def snapshot(self):
         with self.lock:
             now = self.clock()
             age = None if self.last_upload is None else max(0, int(now - self.last_upload))
             comms_age = None if self.last_comms is None else max(0, int(now - self.last_comms))
-            title, color = "Recorder error", 'amber'
-            if self.problem:
-                detail = self.problem
+            attention = self._track_attention(now)
+            color = self.healthy_color
+            if attention:
+                title, detail = attention
+                if now - self.attention_since >= AMBER_AFTER_SECONDS:
+                    color = 'amber'
+                elif self.mode != 'recording':
+                    color = 'gray'
             elif self.mode == "stopping":
-                color = 'gray'
                 title, detail = "Stopping", "Finishing the current request. Queued data stays saved."
             elif self.mode == 'updating':
-                color, title = 'gray', 'Checking for updates'
+                title = 'Checking for updates'
                 detail = 'Recording starts after the update check. Skip it to use the installed version.'
             elif self.mode == "idle":
-                color = 'gray'
                 title = "Not recording"
                 detail = "Press Start recording when you are ready."
                 if self.pending:
                     detail = "Queued data is saved. Start recording again to resume uploads."
                 elif self.server_notice:
                     detail = self.server_notice
-            elif self.link_required:
-                title, detail = 'Steam link required', self.comms_error
-            elif self.upload_error:
-                title = 'Upload problem'
-                detail = self.upload_error
-            elif self.comms_error:
-                title, detail = 'Connection problem', self.comms_error
             elif self.last_comms is None:
-                color, title = 'gray', 'Checking connection'
+                title = 'Checking connection'
                 detail = 'Verifying Steam link and upload access with the league server.'
-            elif now - self.last_comms > self.fresh_seconds:
-                title, detail = 'Connection problem', 'Upload access has not been confirmed recently. Retrying the connection.'
-            elif self.server_notice:
-                title,detail="Data saved — review",self.server_notice
-            elif self.capture_error:
-                title = 'Capture problem'
-                detail = self.capture_error
-            elif self.capture_reason:
-                title = 'Capture problem'
-                detail = self.capture_reason
-            elif self.snapshot_retry is not None and now - self.snapshot_retry[0] >= SNAPSHOT_WARNING_SECONDS:
-                title, detail = 'Capture problem', self.snapshot_retry[1]
-            elif self.pending and self.last_upload is not None and now - self.last_upload > self.fresh_seconds:
-                title = 'Upload problem'
-                detail = "No recent upload confirmation. Check the connection; data stays saved."
-            elif self.pending > self.max_pending:
-                title = 'Catching up on saved data'
-                detail = "Catching up on saved data. Keep the recorder running."
-            elif self.last_capture is not None and now - self.last_capture <= self.fresh_seconds:
-                color, title = 'red', 'Recording in progress'
+            elif color == 'red':
+                title = 'Recording in progress'
                 detail = 'Race data is being recorded and sent to the league server.'
                 if self.last_upload is None:
                     detail = 'Race data is saved locally; awaiting the first upload confirmation.'
             else:
-                color, title = 'green', 'Comms open, awaiting race data'
+                title = 'Comms open, awaiting race data'
                 detail = 'Steam account linked. Upload access verified. Waiting for an AMS2 driving session.'
             return Indicator(color, title, detail, self.pending, age, comms_age)
