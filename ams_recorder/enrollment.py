@@ -53,12 +53,18 @@ def connect(config_path,cancel,notify):
         try:
             if not pairing:
                 if config.get('auto_registration'):transport.register(config['recorder_id'])
-                result=transport.request('/api/recorders/link/start',payload({'enrollment_token':enrollment} if enrollment else {}))
+                request={'approval_url_format':'path'}
+                if enrollment:
+                    request['enrollment_token']=enrollment
+                result=transport.request('/api/recorders/link/start',payload(request))
                 if result.get('status')!='linked':
                     pairing=result.get('pairing_id');url=result.get('approval_url')
                     # Browser destinations must stay on the recorder's configured origin.
-                    if not isinstance(pairing,str) or not re.fullmatch(r'[A-Za-z0-9_-]{43,128}',pairing) or url!=transport.server+'/#connect-recorder/'+pairing:
-                        raise ValueError('Unexpected recorder approval address')
+                    if (not isinstance(pairing,str) or not re.fullmatch(r'[A-Za-z0-9_-]{43,128}',pairing)
+                            or url not in (transport.server+'/connect-recorder/'+pairing,
+                                           transport.server+'/#connect-recorder/'+pairing)):
+                        notify('link_status','The server sent an invalid approval link. Recording is paused. Try linking again.')
+                        return
                     notify('open_browser',url)
                     notify('link_status','Approve this recorder in your browser to enable recording.')
                 else:pairing=None

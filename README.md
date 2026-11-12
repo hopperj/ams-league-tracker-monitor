@@ -4,7 +4,7 @@ Windows recorder for Automobilista 2. It preserves complete shared-memory snapsh
 
 [Download published Windows builds](https://github.com/hopperj/ams-league-tracker-monitor/releases/latest) · [Changelog](CHANGELOG.md) · [Upload protocol](docs/protocol-v1.md)
 
-The source version is **0.6.2**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
+The source version is **0.6.3**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
 
 ## Driver setup
 
@@ -12,9 +12,9 @@ The source version is **0.6.2**. Its Steam requirement, health checks and status
 2. Extract the ZIP and run `AMSLeagueRecorder-Windows-x64-Intel-AMD.exe`. The same x64 build works on Intel and AMD Windows PCs; Python and Tk are bundled.
 3. Approve the recorder in your browser under your Steam account. Existing installations and generic downloads use **Link Steam account**. Website sign-in alone does not approve a recorder.
 4. In AMS2, select **Options → System → Shared Memory → Project CARS 2**.
-5. Leave the capture code blank or set it to **AUTO**. Practice, qualifying, races, track/car changes and observed restarts are organized automatically. League-night approval happens separately on the website.
+5. **Setup** is for changing the server address or using a specific capture code. With the default server and **AUTO**, practice, qualifying and races are captured automatically. League-night approval happens separately on the website.
 
-Recording and uploads require a server-confirmed link to an enabled Steam account. The app can open and complete linking before AMS2 is running. Every new run verifies its link with the server before capturing; a cached local flag cannot grant access. Removed links or denied credentials pause capture. Older clients must also be linked to upload to the updated server.
+Opening the recorder enables recording automatically. The app waits for server confirmation of the Steam link and for AMS2 driving data. Use **Stop** to pause and **Start recording** to resume. Removed links or denied credentials pause capture. Older clients must also be linked to upload to the updated server.
 
 The personalized setup file is single-use and has no expiry. Browser approval links last 20 minutes; use **Link Steam account** again if one expires. Approved installation links have no time limit. Updates preserve the installation ID, private upload credential, destination and queued bytes.
 

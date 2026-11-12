@@ -67,22 +67,30 @@ class EnrollmentTest(unittest.TestCase):
             def register(self,recorder_id):return {}
             def request(self,path,payload=None):
                 requests.append((path,json.loads(gzip.decompress(payload)) if payload else None))
-                if path=='/api/recorders/link/start':return dict(status='pending',pairing_id=ident,approval_url=self.server+'/#connect-recorder/'+ident)
+                if path=='/api/recorders/link/start':return dict(status='pending',pairing_id=ident,approval_url=self.server+prefix+ident)
                 return dict(status='linked',account_name='Approved racer',driver_id='permanent-racer')
-        with patch('ams_recorder.enrollment.Transport',FakeTransport):connect(self.config,NoWait(),lambda *event:events.append(event))
-        self.assertEqual(requests,[('/api/recorders/link/start',{}),('/api/recorders/link/status?pairing_id='+ident,None)])
-        self.assertEqual(events[0],('open_browser',config['server']+'/#connect-recorder/'+ident))
+        for prefix in ('/connect-recorder/', '/#connect-recorder/'):
+            with self.subTest(prefix=prefix), patch('ams_recorder.enrollment.Transport',FakeTransport):
+                requests.clear()
+                events.clear()
+                connect(self.config,NoWait(),lambda *event:events.append(event))
+                self.assertEqual(requests,[('/api/recorders/link/start',{'approval_url_format':'path'}),('/api/recorders/link/status?pairing_id='+ident,None)])
+                self.assertEqual(events[0],('open_browser',config['server']+prefix+ident))
         linked=load_configuration(self.config)
         self.assertTrue(linked['account_linked']);self.assertEqual(linked['account_driver_id'],'permanent-racer')
         for key in ('recorder_id','token','server','event_code'):self.assertEqual(linked[key],config[key])
         queue=Spool(self.queue);self.assertEqual(queue.pending(),1);queue.close()
 
     def test_browser_url_must_stay_on_the_saved_server(self):
-        prepare_enrolled(self.config,self.queue,self.setup);cancel=threading.Event();events=[]
+        config,_=prepare_enrolled(self.config,self.queue,self.setup)
         class FakeTransport:
             def __init__(self,server,token):self.server=server
             def register(self,ident):return {}
-            def request(self,*args):return dict(status='pending',pairing_id='B'*43,approval_url='https://evil.example/')
-        def notify(kind,value):events.append((kind,value));cancel.set()
-        with patch('ams_recorder.enrollment.Transport',FakeTransport):connect(self.config,cancel,notify)
-        self.assertFalse(any(kind=='open_browser' for kind,value in events));self.assertIn('Recording is paused',events[0][1])
+            def request(self,*args):return dict(status='pending',pairing_id='B'*43,approval_url=url)
+        for url in ('https://evil.example/', config['server']+'/connect-recorder/'+'C'*43):
+            with self.subTest(url=url), patch('ams_recorder.enrollment.Transport',FakeTransport):
+                events=[]
+                connect(self.config,threading.Event(),lambda *event:events.append(event))
+                self.assertEqual(len(events),1)
+                self.assertEqual(events[0][0],'link_status')
+                self.assertIn('Recording is paused',events[0][1])

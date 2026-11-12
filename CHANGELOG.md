@@ -4,6 +4,12 @@ Changes are listed newest first. Entries under Unreleased describe source change
 
 ## Unreleased
 
+## 0.6.3
+
+- Restore Steam approval with clean browser links and retain compatibility with older webapps.
+- Enable recording on launch and show that Steam approval is required before capture. Reopen the approval page from the recorder while it is waiting.
+- Explain the optional server address and capture code in Setup.
+
 ## 0.6.2
 
 - Show amber after a problem persists for three continuous seconds. Show the explanation immediately and reset the delay on recovery.

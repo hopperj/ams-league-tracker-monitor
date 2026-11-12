@@ -81,6 +81,86 @@ class WindowTest(unittest.TestCase):
         self.assertEqual(len(self.window.entries),2)
         self.assertEqual(self.window.config['token'],'test-token')
 
+    def test_normal_launch_enables_recording_without_pressing_start(self):
+        import tkinter as tk
+
+        config_path = self.path / 'linked.json'
+        save_configuration(config_path, dict(self.window.config, account_linked=True))
+        root = tk.Toplevel(self.root)
+        root.withdraw()
+        active = threading.Event()
+
+        def recorder(args, stop, on_event):
+            on_event('comms_ok')
+            active.set()
+            stop.wait(5)
+
+        with patch('ams_recorder.gui.updates.native_target', return_value=self.path / 'recorder.exe'), \
+                patch('ams_recorder.gui.updates.check_release', return_value=None) as check, \
+                patch('ams_recorder.gui.run', side_effect=recorder) as run:
+            window = RecorderWindow(root, config_path, self.path / 'linked-queue.sqlite3')
+            try:
+                deadline = time.monotonic() + 3
+                while time.monotonic() < deadline and window.title.get() != 'Comms open, awaiting race data':
+                    self.root.update()
+                    time.sleep(.01)
+                check.assert_called_once()
+                run.assert_called_once()
+                self.assertTrue(active.is_set())
+                self.assertEqual(window.title.get(), 'Comms open, awaiting race data')
+                self.assertEqual(window.start_button.cget('text'), 'Recording enabled')
+                self.assertEqual(str(window.stop_button.cget('state')), 'normal')
+
+                window.stop()
+                window.worker.join(timeout=3)
+                window.poll()
+                self.assertIsNone(window.worker)
+                self.assertEqual(window.start_button.cget('text'), 'Start recording')
+                self.assertEqual(str(window.start_button.cget('state')), 'normal')
+            finally:
+                window.stop()
+                if window.worker:
+                    window.worker.join(timeout=3)
+                if window.update_thread:
+                    window.update_thread.join(timeout=3)
+                root.destroy()
+
+    def test_unlinked_window_disables_start_and_can_reopen_browser_approval(self):
+        window = self.window
+        self.assertEqual(window.title.get(), 'Steam link required')
+        self.assertEqual(window.start_button.cget('text'), 'Link Steam first')
+        self.assertEqual(str(window.start_button.cget('state')), 'disabled')
+        self.assertEqual(str(window.link_button.cget('state')), 'normal')
+        approval = 'http://127.0.0.1:8787/connect-recorder/' + 'A' * 43
+        requested = threading.Event()
+        approved = threading.Event()
+
+        def connect(config_path, cancel, notify):
+            notify('open_browser', approval)
+            notify('link_status', 'Approve this recorder in your browser to enable recording.')
+            requested.set()
+            if approved.wait(3):
+                notify('link_complete', dict(window.config, account_linked=True, account_name='Alex Morgan'))
+
+        with patch('ams_recorder.gui.connect_account', side_effect=connect), \
+                patch('ams_recorder.gui.webbrowser.open') as browser:
+            window.link_button.invoke()
+            self.assertTrue(requested.wait(1))
+            window.messages.put(('link_required', None))
+            window.poll()
+            browser.assert_called_once_with(approval)
+            self.assertEqual(window.link_button.cget('text'), 'Open Steam approval')
+            self.assertIn('Approve this recorder in your browser', window.account_label.get())
+            self.assertEqual(str(window.start_button.cget('state')), 'disabled')
+            window.link_button.invoke()
+            self.assertEqual(browser.call_count, 2)
+            approved.set()
+            window.link_thread.join(timeout=3)
+            window.poll()
+            self.assertEqual(window.account_label.get(), 'Linked to: Alex Morgan')
+            self.assertEqual(window.start_button.cget('text'), 'Start recording')
+            self.assertEqual(str(window.start_button.cget('state')), 'normal')
+
     def test_ready_message_and_controls_fit_the_minimum_window(self):
         self.root.geometry('470x500')
         self.root.deiconify()

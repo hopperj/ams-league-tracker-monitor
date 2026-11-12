@@ -36,6 +36,8 @@ class RecorderWindow:
         self.config = None
         self.worker = None
         self.link_thread = None
+        self.approval_url = None
+        self.account_linked = False
         self.auto_link_attempted = False
         self.update_thread = None
         self.update_cancel = threading.Event()
@@ -127,7 +129,7 @@ class RecorderWindow:
         self.setup_frame = tk.Frame(self.setup_dialog, background=PAPER, padx=22, pady=12)
         self.setup_frame.pack(fill="both", expand=True)
         tk.Label(self.setup_frame, text="RECORDER SETUP", foreground=MUTED, background=PAPER, font=(family, 9, "bold")).pack(anchor="w", pady=(22, 5))
-        tk.Label(self.setup_frame, text="Link Steam before recording. AUTO captures all driving. For Human/AI labels, enable Project CARS 2 UDP and a nonzero UDP frequency in AMS2.", foreground=MUTED, background=PAPER, font=(family, 9), wraplength=470, justify="left").pack(anchor="w", pady=(0, 8))
+        tk.Label(self.setup_frame, text="These settings are optional. Leave the default server address and AUTO to capture all driving. For Human/AI labels, enable Project CARS 2 UDP and a nonzero UDP frequency in AMS2.", foreground=MUTED, background=PAPER, font=(family, 9), wraplength=470, justify="left").pack(anchor="w", pady=(0, 8))
         self.server = tk.StringVar(value=DEFAULT_SERVER)
         self.event_code = tk.StringVar(value="AUTO")
         self.entries = []
@@ -142,15 +144,19 @@ class RecorderWindow:
         try:
             self.config, enrollment_notice = prepare_enrolled(self.config_path, self.spool_path)
             self.apply_configuration(self.config)
+            self.show_saved_account(self.config)
             if enrollment_notice:self.account_label.set(enrollment_notice)
         except (OSError, ValueError, KeyError, TypeError):
             self.status.update("fatal", message="Saved setup could not be read. Restore the original config.json so queued data keeps its recorder connection.")
             self.toggle_setup()
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.report_callback_exception = self.callback_error
-        self.poll()
         if self.config and auto_start:
-            root.after(150, self.startup if check_updates else self.start)
+            if check_updates:
+                self.startup()
+            else:
+                self.start()
+        self.poll()
 
     def startup(self):
         if self.worker or self.busy or self.closing or self.update_thread:return
@@ -197,20 +203,33 @@ class RecorderWindow:
             LOG.warning('Could not clean up the skipped update; installed recorder retained')
 
     def link_account(self):
-        if self.closing or self.update_thread or not self.config or self.link_thread and self.link_thread.is_alive():return
+        if self.closing or self.update_thread or not self.config:
+            return
+        if self.link_thread:
+            if self.approval_url:
+                webbrowser.open(self.approval_url)
+            return
         self.auto_link_attempted = True
-        self.link_cancel.clear();self.link_button.configure(state="disabled")
+        self.link_cancel.clear()
+        self.account_label.set("Connecting to the league server…")
+        self.link_button.configure(state="disabled")
         def work():
             try:connect_account(self.config_path,self.link_cancel,lambda kind,value:self.messages.put((kind,value)))
             finally:self.messages.put(('link_done',None))
         self.link_thread=threading.Thread(target=work,name="steam-account",daemon=True);self.link_thread.start()
 
+    def show_saved_account(self, config):
+        self.account_linked = bool(config.get('account_linked'))
+        if self.account_linked:
+            self.account_label.set('Linked to: '+config.get('account_name', 'Steam racer'))
+        else:
+            self.account_label.set('Link Steam to enable recording')
+
     def apply_configuration(self, config):
-        if config.get("account_linked"):self.account_label.set("Linked to: "+config.get("account_name","Steam racer"))
         self.server.set(config["server"])
         self.event_code.set(config["event_code"])
         name = config['driver_name'] if config['driver_name'] != 'Waiting for AMS2' else 'AMS2 recorder'
-        self.driver.set(name + "  ·  " + ("Automatic recording" if config["event_code"]=="AUTO" else config["event_code"]))
+        self.driver.set(name + "  ·  " + ("All sessions (AUTO)" if config["event_code"]=="AUTO" else config["event_code"]))
 
     def hide_setup(self):
         self.setup_visible = False
@@ -304,8 +323,6 @@ class RecorderWindow:
 
         self.worker = threading.Thread(target=record, name="recorder", daemon=True)
         self.worker.start()
-        if not self.config.get('account_linked') and not self.auto_link_attempted:
-            self.root.after(500, self.link_account)
 
     def stop(self):
         if self.update_thread:
@@ -353,22 +370,29 @@ class RecorderWindow:
                     self.status.update('stopped')
                     if self.start_after_update and not self.closing:self.start()
                 elif kind == 'open_browser':
-                    webbrowser.open(value)
+                    if not self.closing:
+                        self.approval_url = value
+                        webbrowser.open(value)
                 elif kind == 'link_status':
                     self.account_label.set(value)
                 elif kind == 'link_complete':
                     self.config=value;self.apply_configuration(value)
+                    self.show_saved_account(value)
                 elif kind == 'link_required':
-                    self.account_label.set('Steam link required before recording')
+                    if self.account_linked:
+                        self.account_label.set('Steam link required before recording')
+                    self.account_linked = False
                     if not self.auto_link_attempted:self.link_account()
-                elif kind == 'account_verified' and value:
-                    self.account_label.set('Linked to: '+value)
+                elif kind == 'account_verified':
+                    self.account_linked = True
+                    self.account_label.set('Linked to: '+value if value else 'Steam account linked')
                 elif kind == 'link_done':
-                    self.link_thread=None;self.link_button.configure(state="normal")
+                    self.link_thread = self.approval_url = None
                 elif kind == "setup_ok":
                     self.worker, self.busy = None, False
                     self.config, start_after = value
                     self.apply_configuration(self.config)
+                    self.show_saved_account(self.config)
                     self.status = RecorderStatus()
                     if not self.closing and not self.cancel_setup.is_set() and start_after:
                         self.start()
@@ -392,18 +416,30 @@ class RecorderWindow:
             return
         state = self.status.snapshot()
         self.light.itemconfigure(self.bulb, fill=LIGHT_COLORS[state.color])
-        self.title.set(state.title)
-        self.detail.set(state.detail)
+        if state.title == 'Not recording' and self.config and not self.account_linked:
+            self.title.set('Steam link required')
+            self.detail.set('Link this recorder to your Steam account to enable recording.')
+        else:
+            self.title.set(state.title)
+            self.detail.set(state.detail)
         self.pending.set("Queued samples: " + str(state.pending))
         self.last_upload.set('Comms: '+(str(state.last_comms_seconds)+'s ago' if state.last_comms_seconds is not None else '—')+
                              ' · Upload: '+(str(state.last_upload_seconds)+'s ago' if state.last_upload_seconds is not None else '—'))
         locked = self.worker is not None or self.closing or self.update_thread is not None
         for widget in [self.settings_button, self.save_button, *self.entries]:
             widget.configure(state="disabled" if locked else "normal")
-        self.link_button.configure(state='disabled' if self.update_thread or self.closing or
-            self.link_thread and self.link_thread.is_alive() else 'normal')
-        self.start_button.configure(text='Skip update & start' if self.update_thread else 'Start recording',
-            state='disabled' if self.worker or self.closing else 'normal')
+        self.save_button.configure(text='Save setup & start' if self.account_linked else 'Save setup')
+        self.link_button.configure(text='Open Steam approval' if self.approval_url else 'Link Steam account',
+            state='disabled' if self.update_thread or self.closing or not self.config or
+            (self.link_thread and not self.approval_url) else 'normal')
+        start_label = 'Start recording' if self.account_linked else 'Link Steam first'
+        if self.update_thread:
+            start_label = 'Skip update & start' if self.account_linked else 'Skip update'
+        elif self.account_linked and self.worker and not self.busy and not self.stop_event.is_set():
+            start_label = 'Recording enabled'
+        self.start_button.configure(text=start_label,
+            state='disabled' if self.worker or self.closing or
+            (not self.account_linked and not self.update_thread) else 'normal')
         self.stop_button.configure(state="normal" if (self.worker or self.update_thread) and not self.closing else "disabled")
         self.root.after(200, self.poll)
 
