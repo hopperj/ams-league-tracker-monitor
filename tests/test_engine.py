@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from ams_recorder.configuration import save_configuration
 from ams_recorder.engine import run
-from ams_recorder.spool import Spool
+from ams_recorder.spool import MAX_BATCH_FRAMES, Spool
 from ams_recorder.status import RecorderStatus
 from ams_recorder.demo import snapshot
 from ams_recorder.memory import MemoryUnavailable, SnapshotBusy
@@ -104,6 +104,24 @@ class EngineTest(unittest.TestCase):
         self.assertIn("upload_error",events);self.assertIn("uploaded",events)
         self.assertLess(events.index("upload_error"),events.index("uploaded"))
         self.assertEqual(self.retry_bytes[0],self.retry_bytes[1])
+
+    def test_backlog_sends_large_batches_without_waiting_for_live_interval(self):
+        queue = Spool(self.args.spool)
+        for sequence in range(2 * MAX_BATCH_FRAMES):
+            queue.append("TEST","saved-run",{"sequence":sequence})
+        queue.close()
+        self.args.demo = False
+        self.args.batch_seconds = 5
+        self.args.duration = 3
+        stop = threading.Event()
+        def progress(kind, **values):
+            if kind == "uploaded" and values["pending"] == 0:
+                stop.set()
+        with patch("ams_recorder.engine.MemoryReader") as reader:
+            reader.return_value.read.side_effect = MemoryUnavailable("Waiting for AMS2.")
+            run(self.args, stop, progress)
+        self.assertTrue(stop.is_set())
+        self.assertEqual([len(batch["frames"]) for batch in self.received.values()],[MAX_BATCH_FRAMES]*2)
 
     def test_wrong_ack_does_not_emit_success_or_remove_queued_samples(self):
         self.bad_ack=True;events=[]

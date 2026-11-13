@@ -4,6 +4,10 @@ Changes are listed newest first. Entries under Unreleased describe source change
 
 ## Unreleased
 
+## 0.6.4
+
+- Upload live samples about once a second and drain saved data in batches of up to 240 frames within the existing server size limits. Keep the exact bytes of any batch already queued for retry.
+
 ## 0.6.3
 
 - Restore Steam approval with clean browser links and retain compatibility with older webapps.

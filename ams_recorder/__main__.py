@@ -2,7 +2,7 @@ import argparse
 import logging
 
 from .configuration import defaults, prepare_configuration
-from .engine import run
+from .engine import DEFAULT_BATCH_SECONDS, run
 from .spool import Spool
 from .transport import Transport
 from .status import receipt_notice
@@ -29,7 +29,7 @@ def main():
     record = sub.add_parser("run")
     record.add_argument("--spool", default=str(spool))
     record.add_argument("--hz", type=float, default=60)
-    record.add_argument("--batch-seconds", type=float, default=2)
+    record.add_argument("--batch-seconds", type=float, default=DEFAULT_BATCH_SECONDS)
     record.add_argument("--max-spool-mb", type=int, default=2048)
     record.add_argument("--demo", action="store_true")
     record.add_argument("--demo-offset", type=float, default=0)

@@ -9,6 +9,11 @@ from pathlib import Path
 from .transport import canonical_server
 
 
+MAX_BATCH_FRAMES = 240
+MAX_BATCH_JSON_BYTES = 15 * 1024 * 1024
+MAX_BATCH_GZIP_BYTES = 8 * 1024 * 1024
+
+
 def encode(value):
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
 
@@ -62,7 +67,7 @@ class Spool:
         # after a large backlog had been acknowledged.
         return int(self.db.execute("SELECT value FROM metadata WHERE key='queued_bytes'").fetchone()[0]) + self.db.execute("SELECT coalesce(sum(length(payload)),0) FROM outbox").fetchone()[0]
 
-    def batch(self, recorder_id, limit=120):
+    def batch(self, recorder_id, limit=MAX_BATCH_FRAMES):
         row = self.db.execute("SELECT id,payload FROM outbox LIMIT 1").fetchone()
         if row:
             return row
@@ -71,27 +76,29 @@ class Spool:
             return None
         # Keep each batch within one event and process run. Old backlog keeps its original destination.
         event, run = rows[0][1:3]
-        selected, frames, size = [], [], 0
+        batch_id = str(uuid.uuid4())
+        metadata = {"schema_version": 1, "batch_id": batch_id, "recorder_id": recorder_id,
+                    "event_code": event, "run_id": run, "created_at_ms": int(time.time() * 1000)}
+        prefix = encode(metadata)[:-1] + b',"frames":['
+        suffix = b']}'
+        frames = []
+        size = len(prefix) + len(suffix)
         for row in rows:
             if row[1:3] != (event, run):
                 break
             body = gzip.decompress(row[3])
-            if selected and size + len(body) > 12 * 1024 * 1024:
+            frame_size = len(body) + bool(frames)
+            if frames and size + frame_size > MAX_BATCH_JSON_BYTES:
                 break
-            selected.append(row[0])
-            frames.append(json.loads(body))
-            size += len(body)
-        batch_id = str(uuid.uuid4())
-        body = {"schema_version": 1, "batch_id": batch_id, "recorder_id": recorder_id,
-                "event_code": event, "run_id": run, "created_at_ms": int(time.time() * 1000), "frames": frames}
-        payload = gzip.compress(encode(body), compresslevel=6, mtime=0)
-        while len(payload) > 8 * 1024 * 1024 and len(frames) > 1:
+            # The queue already contains complete JSON frames from append().
+            frames.append(body)
+            size += frame_size
+        payload = gzip.compress(prefix + b','.join(frames) + suffix, compresslevel=6, mtime=0)
+        while len(payload) > MAX_BATCH_GZIP_BYTES and len(frames) > 1:
             frames = frames[:max(1,len(frames)//2)]
-            selected = selected[:len(frames)]
-            body["frames"] = frames
-            payload = gzip.compress(encode(body), compresslevel=6, mtime=0)
+            payload = gzip.compress(prefix + b','.join(frames) + suffix, compresslevel=6, mtime=0)
         with self.db:
-            self.db.execute("INSERT INTO outbox VALUES(?,?,?)", (batch_id, payload, selected[-1]))
+            self.db.execute("INSERT INTO outbox VALUES(?,?,?)", (batch_id, payload, rows[len(frames)-1][0]))
         return batch_id, payload
 
     def acknowledge(self, batch_id):

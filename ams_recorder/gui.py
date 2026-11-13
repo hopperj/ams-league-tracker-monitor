@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 from .configuration import DEFAULT_SERVER, connection_values, defaults, prepare_configuration
 from . import __version__, updates
-from .engine import run
+from .engine import DEFAULT_BATCH_SECONDS, run
 from .enrollment import prepare_enrolled, connect as connect_account
 from .status import RecorderStatus, upload_problem
 
@@ -296,7 +296,7 @@ class RecorderWindow:
             self.toggle_setup()
         self.stop_event = threading.Event()
         self.status.update("started")
-        args = SimpleNamespace(config=str(self.config_path), spool=str(self.spool_path), hz=60, batch_seconds=2,
+        args = SimpleNamespace(config=str(self.config_path), spool=str(self.spool_path), hz=60, batch_seconds=DEFAULT_BATCH_SECONDS,
                                max_spool_mb=2048, demo=self.demo, demo_offset=91, duration=None,
                                replay=None, udp=False, udp_detection=True, udp_port=5606, udp_source=None)
 
