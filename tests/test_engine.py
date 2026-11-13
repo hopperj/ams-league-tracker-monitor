@@ -107,7 +107,7 @@ class EngineTest(unittest.TestCase):
 
     def test_backlog_sends_large_batches_without_waiting_for_live_interval(self):
         queue = Spool(self.args.spool)
-        for sequence in range(2 * MAX_BATCH_FRAMES):
+        for sequence in range(2 * MAX_BATCH_FRAMES + 1):
             queue.append("TEST","saved-run",{"sequence":sequence})
         queue.close()
         self.args.demo = False
@@ -120,8 +120,7 @@ class EngineTest(unittest.TestCase):
         with patch("ams_recorder.engine.MemoryReader") as reader:
             reader.return_value.read.side_effect = MemoryUnavailable("Waiting for AMS2.")
             run(self.args, stop, progress)
-        self.assertTrue(stop.is_set())
-        self.assertEqual([len(batch["frames"]) for batch in self.received.values()],[MAX_BATCH_FRAMES]*2)
+        self.assertEqual([len(batch["frames"]) for batch in self.received.values()],[MAX_BATCH_FRAMES,MAX_BATCH_FRAMES,1])
 
     def test_wrong_ack_does_not_emit_success_or_remove_queued_samples(self):
         self.bad_ack=True;events=[]

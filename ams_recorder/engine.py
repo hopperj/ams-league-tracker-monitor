@@ -4,7 +4,6 @@ import gzip
 import itertools
 import json
 import logging
-import math
 from pathlib import Path
 import signal
 import threading
@@ -15,7 +14,7 @@ import uuid
 from .configuration import prepare_configuration
 from .decoder import decode
 from .memory import MemoryReader, MemoryUnavailable, SnapshotBusy
-from .spool import MAX_BATCH_FRAMES, Spool
+from .spool import Spool
 from .status import receipt_notice, upload_problem
 from .transport import Transport
 
@@ -63,7 +62,6 @@ def run(args, stop_event=None, on_event=None):
                 backoff = 1
                 registered = not config.get('auto_registration', False)
                 last_health = None
-                live_batch_frames = min(MAX_BATCH_FRAMES, max(1, math.ceil(args.hz * args.batch_seconds)))
                 while not stop.is_set():
                     checking_health = True
                     try:
@@ -85,7 +83,6 @@ def run(args, stop_event=None, on_event=None):
                             anchor_delta = time.time()*1000 - (anchor_wall + (time.monotonic()-anchor_mono)*1000)
                             clock.update(offset=offset+anchor_delta, uncertainty=uncertainty, last_sync=time.monotonic())
                         checking_health = False
-                        send_started = time.monotonic()
                         batch = outgoing.batch(config["recorder_id"])
                         if batch:
                             batch_id, body = batch
@@ -106,12 +103,9 @@ def run(args, stop_event=None, on_event=None):
                         else:
                             pending = outgoing.pending()
                         backoff = 1
-                        now = time.monotonic()
-                        until_health = max(0, last_health + HEALTH_SECONDS - now)
-                        if pending < live_batch_frames:
-                            # The upload itself counts toward the normal send interval.
-                            remaining = max(0, send_started + args.batch_seconds - now)
-                            stop.wait(min(remaining, until_health))
+                        if not pending:
+                            until_health = max(0, last_health + HEALTH_SECONDS - time.monotonic())
+                            stop.wait(min(args.batch_seconds, until_health))
                     except (OSError, ValueError, urllib.error.URLError) as exc:
                         if isinstance(exc, urllib.error.HTTPError) and exc.code == 401 and config.get('auto_registration'):
                             registered = False
