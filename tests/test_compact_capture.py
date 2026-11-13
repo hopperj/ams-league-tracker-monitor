@@ -41,8 +41,9 @@ class CompactCaptureTest(unittest.TestCase):
             spool.close()
 
     def test_compact_batch_splits_at_the_expanded_byte_limit(self):
-        folder = self.enterContext(tempfile.TemporaryDirectory())
-        spool = Spool(Path(folder) / "spool.sqlite3")
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        spool = Spool(Path(folder.name) / "spool.sqlite3")
         self.addCleanup(spool.close)
         raw = bytes(MAX_RAW_BYTES)
         for sequence in range(512):
