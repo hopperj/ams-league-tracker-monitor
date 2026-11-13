@@ -4,6 +4,11 @@ Changes are listed newest first. Entries under Unreleased describe source change
 
 ## Unreleased
 
+## 0.6.7
+
+- Upload lossless compact AMS2 snapshots when the server supports the format, with up to 512 frames per batch for backlog recovery.
+- Keep live uploads frequent and preserve existing queues and Steam links during updates.
+
 ## 0.6.6
 
 - Request acknowledgement as soon as the server safely stores each batch so uploads can continue during background race processing.
