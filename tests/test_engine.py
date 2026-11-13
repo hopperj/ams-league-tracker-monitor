@@ -33,6 +33,7 @@ class EngineTest(unittest.TestCase):
         self.health_calls = []
         self.health_failures = 0
         self.retry_bytes = []
+        self.ack_modes = []
         owner = self
         class Handler(BaseHTTPRequestHandler):
             def log_message(self,*args): pass
@@ -59,6 +60,7 @@ class EngineTest(unittest.TestCase):
                         account_linked=True, upload_ready=True, account_name='Alex Morgan'))
                     return
                 owner.retry_bytes.append(raw)
+                owner.ack_modes.append(self.headers.get('X-AMS-Upload-Ack'))
                 if owner.failures:
                     owner.failures-=1;self.send(503,{"error":"unavailable"});return
                 if not owner.bad_ack: owner.received[body["batch_id"]]=body
@@ -106,6 +108,7 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(self.retry_bytes[0],self.retry_bytes[1])
 
     def test_backlog_sends_large_batches_without_waiting_for_live_interval(self):
+        self.ack_extras = {'stored': True, 'processing_status': 'pending'}
         queue = Spool(self.args.spool)
         for sequence in range(2 * MAX_BATCH_FRAMES + 1):
             queue.append("TEST","saved-run",{"sequence":sequence})
@@ -115,12 +118,15 @@ class EngineTest(unittest.TestCase):
         self.args.duration = 3
         stop = threading.Event()
         def progress(kind, **values):
-            if kind == "uploaded" and values["pending"] == 0:
-                stop.set()
+            if kind == "uploaded":
+                self.assertIsNone(values['review'])
+                if values["pending"] == 0:
+                    stop.set()
         with patch("ams_recorder.engine.MemoryReader") as reader:
             reader.return_value.read.side_effect = MemoryUnavailable("Waiting for AMS2.")
             run(self.args, stop, progress)
         self.assertEqual([len(batch["frames"]) for batch in self.received.values()],[MAX_BATCH_FRAMES,MAX_BATCH_FRAMES,1])
+        self.assertEqual(self.ack_modes, ['stored'] * 3)
 
     def test_wrong_ack_does_not_emit_success_or_remove_queued_samples(self):
         self.bad_ack=True;events=[]

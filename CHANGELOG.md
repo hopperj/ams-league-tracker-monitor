@@ -4,6 +4,10 @@ Changes are listed newest first. Entries under Unreleased describe source change
 
 ## Unreleased
 
+## 0.6.6
+
+- Request acknowledgement as soon as the server safely stores each batch so uploads can continue during background race processing.
+
 ## 0.6.5
 
 - Send the next batch immediately whenever samples are queued, including partial batches. Poll only while the queue is empty and back off after failed requests.

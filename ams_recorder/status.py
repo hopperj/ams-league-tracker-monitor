@@ -33,7 +33,7 @@ def receipt_notice(response):
                 message=warning.get("message")
                 if isinstance(message,str):
                     return "Data saved. " + " ".join(message.split())[:320]
-    if response.get("processing_status") in ("needs_review","error","pending"):
+    if response.get("processing_status") in ("needs_review","error"):
         return "Data saved. Check the capture inbox in the league dashboard for processing details."
     return None
 

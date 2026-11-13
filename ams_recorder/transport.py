@@ -38,6 +38,8 @@ class Transport:
         headers = {"Authorization": "Bearer " + self.token, "Accept": "application/json"}
         if payload is not None:
             headers.update({"Content-Type": "application/json", "Content-Encoding": "gzip"})
+            if path == "/api/batches":
+                headers["X-AMS-Upload-Ack"] = "stored"
         req = urllib.request.Request(self.server + path, data=payload, headers=headers)
         try:
             response = self.opener.open(req, timeout=15)
