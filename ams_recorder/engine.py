@@ -6,14 +6,17 @@ import json
 import logging
 from pathlib import Path
 import signal
+import struct
 import threading
 import time
 import urllib.error
 import uuid
 
+from .compact_wire import MAGIC, MAX_RAW_BYTES, unpack
 from .configuration import prepare_configuration
-from .decoder import decode
+from .decoder import PHASES, decode, plain
 from .memory import MemoryReader, MemoryUnavailable, SnapshotBusy
+from .schema import STRUCT_BYTES, SUPPORTED_VERSION, SharedMemory
 from .spool import Spool
 from .status import receipt_notice, upload_problem
 from .transport import Transport
@@ -52,8 +55,13 @@ def run(args, stop_event=None, on_event=None):
         replay = None
         if args.replay:
             body = Path(args.replay).read_bytes()
-            recorded = json.loads(gzip.decompress(body) if body[:2] == b"\x1f\x8b" else body)
-            replay = iter(recorded["frames"])
+            if body.startswith(MAGIC):
+                _, records = unpack(body)
+                replay = iter(dict(decode(raw, meta.get("driver_name")), **{k: v for k, v in meta.items() if k != "driver_name"})
+                              for meta, raw in records)
+            else:
+                recorded = json.loads(gzip.decompress(body) if body[:2] == b"\x1f\x8b" else body)
+                replay = iter(recorded["frames"])
 
         def upload():
             outgoing = None
@@ -83,7 +91,7 @@ def run(args, stop_event=None, on_event=None):
                             anchor_delta = time.time()*1000 - (anchor_wall + (time.monotonic()-anchor_mono)*1000)
                             clock.update(offset=offset+anchor_delta, uncertainty=uncertainty, last_sync=time.monotonic())
                         checking_health = False
-                        batch = outgoing.batch(config["recorder_id"])
+                        batch = outgoing.batch(config["recorder_id"], compact=getattr(transport, "compact_capture", False))
                         if batch:
                             batch_id, body = batch
                             report("queued", pending=outgoing.pending())
@@ -140,13 +148,16 @@ def run(args, stop_event=None, on_event=None):
             from .udp import ParticipantCache
             udp_participants = ParticipantCache()
 
-        def persist(frame, queue):
+        def persist(frame, queue, raw=None):
             now = anchor_wall + (time.monotonic() - anchor_mono) * 1000
             with capture_lock:
                 if not capture_allowed.is_set() or stop.is_set():
                     return False
                 frame.update(sequence=next(sequence), captured_at_ms=round(now + clock["offset"]), clock_uncertainty_ms=clock["uncertainty"])
-                queue.append(config["event_code"], run_id, frame)
+                if raw is None:
+                    queue.append(config["event_code"], run_id, frame)
+                else:
+                    queue.append_raw(config["event_code"], run_id, frame, raw)
                 return True
 
         thread = threading.Thread(target=upload, name="uploader", daemon=True)
@@ -190,22 +201,42 @@ def run(args, stop_event=None, on_event=None):
                         report("snapshot_read")
                         snapshot_busy = False
                 if raw != last_raw:
-                    frame = dict(replay_frame) if replay is not None else decode(raw,
-                        capture_name if args.demo else None if config.get('auto_registration') else config['driver_name'])
-                    if replay is not None:
-                        frame["original_captured_at_ms"] = replay_frame.get("captured_at_ms")
-                    frame.update(source_kind=frame.get("source_kind","shared_memory"), consistent=consistent,
-                                 synthetic=bool(args.demo or (replay is not None and replay_frame.get("synthetic"))), replay=bool(args.replay))
-                    if udp_participants:
-                        udp_participants.annotate(frame)
+                    driver_hint = capture_name if args.demo else None if config.get('auto_registration') else config['driver_name']
+                    use_raw = (replay is None and 1 <= len(raw) <= MAX_RAW_BYTES
+                               and getattr(transport, "compact_capture", False))
+                    if use_raw:
+                        decoded = len(raw) >= STRUCT_BYTES and struct.unpack_from("<I", raw)[0] == SUPPORTED_VERSION
+                        game_state = struct.unpack_from("<I", raw, SharedMemory.mGameState.offset)[0] if decoded else None
+                        frame = {"driver_name": driver_hint, "consistent": consistent, "synthetic": bool(args.demo), "replay": False}
+                        if udp_participants:
+                            if decoded:
+                                state = SharedMemory.from_buffer_copy(raw)
+                                context = {"track": plain(state.mTrackLocation), "variation": plain(state.mTrackVariation)}
+                                phase = PHASES.get(state.mSessionState, "unknown")
+                            else:
+                                context, phase = {}, None
+                            proof = dict(frame, game_state=game_state, session=context, phase=phase)
+                            udp_participants.annotate(proof, decode_frame=lambda: dict(
+                                decode(raw, driver_hint), consistent=consistent, replay=False))
+                            if "participant_type_evidence" in proof:
+                                frame["participant_type_evidence"] = proof["participant_type_evidence"]
+                    else:
+                        frame = dict(replay_frame) if replay is not None else decode(raw, driver_hint)
+                        if replay is not None:
+                            frame["original_captured_at_ms"] = replay_frame.get("captured_at_ms")
+                        frame.update(source_kind=frame.get("source_kind","shared_memory"), consistent=consistent,
+                                     synthetic=bool(args.demo or (replay is not None and replay_frame.get("synthetic"))), replay=bool(args.replay))
+                        if udp_participants:
+                            udp_participants.annotate(frame)
+                        decoded, game_state = frame["decoded"], frame.get("game_state")
                     if not capture_allowed.is_set():
                         continue
                     with capture_lock:
-                        if not persist(frame, spool):
+                        if not persist(frame, spool, raw if use_raw else None):
                             continue
-                        report("captured", decoded=frame["decoded"], consistent=consistent, game_state=frame.get("game_state"), replay=frame["replay"])
+                        report("captured", decoded=decoded, consistent=consistent, game_state=game_state, replay=frame["replay"])
                     last_raw = raw
-                    if reader and frame.get("game_state") == 0:
+                    if reader and game_state == 0:
                         reader.close()
             except MemoryUnavailable as exc:
                 snapshot_busy = isinstance(exc, SnapshotBusy)

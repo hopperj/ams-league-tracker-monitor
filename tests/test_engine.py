@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from ams_recorder.compact_wire import ENCODING, MEDIA_TYPE, unpack
 from ams_recorder.configuration import save_configuration
 from ams_recorder.engine import run
 from ams_recorder.spool import MAX_BATCH_FRAMES, Spool
@@ -22,6 +23,7 @@ class EngineTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.failures = 0
+        self.capture_formats = []
         self.registration_failures = 0
         self.registrations = []
         self.recorder_id = "recorder"
@@ -43,7 +45,11 @@ class EngineTest(unittest.TestCase):
                 self.send(200,{"recorder_id":owner.recorder_id, "driver_name":"Alex Morgan", "server_time_ms":int(time.time()*1000)})
             def do_POST(self):
                 raw=self.rfile.read(int(self.headers["Content-Length"]))
-                body=json.loads(gzip.decompress(raw))
+                if self.headers.get('Content-Type') == MEDIA_TYPE:
+                    body, frames = unpack(raw)
+                    body['frames'] = frames
+                else:
+                    body=json.loads(gzip.decompress(raw))
                 if self.path=='/api/recorders/register':
                     owner.registrations.append((body,self.headers['Authorization']))
                     if owner.registration_failures:
@@ -57,7 +63,7 @@ class EngineTest(unittest.TestCase):
                     if not owner.linked:
                         self.send(403, {'error': 'Link Steam account', 'code': 'steam_link_required'});return
                     self.send(200, dict(nonce=body['nonce'], recorder_id=owner.recorder_id,
-                        account_linked=True, upload_ready=True, account_name='Alex Morgan'))
+                        account_linked=True, upload_ready=True, account_name='Alex Morgan', capture_formats=owner.capture_formats))
                     return
                 owner.retry_bytes.append(raw)
                 owner.ack_modes.append(self.headers.get('X-AMS-Upload-Ack'))
@@ -92,6 +98,26 @@ class EngineTest(unittest.TestCase):
         spool=Spool(self.args.spool)
         self.assertEqual(uploaded+spool.pending(),events.count("captured"));spool.close()
         self.assertFalse(status.snapshot().green)
+
+    def test_negotiated_upload_spools_raw_memory_and_uses_binary_http(self):
+        self.capture_formats = [ENCODING]
+        stop = threading.Event()
+        events = []
+
+        def progress(kind, **values):
+            events.append(kind)
+            if kind == "uploaded":
+                stop.set()
+
+        # The negotiated recorder path should not build a full SDK JSON frame.
+        self.args.duration = 4
+        with patch("ams_recorder.engine.decode", side_effect=AssertionError("Recorder decoded the raw snapshot")):
+            run(self.args, stop_event=stop, on_event=progress)
+        self.assertIn("uploaded", events)
+        batch = next(iter(self.received.values()))
+        self.assertEqual(batch["schema_version"], 2)
+        self.assertTrue(batch["frames"])
+        self.assertTrue(all(meta["synthetic"] and len(raw) > 1000 for meta, raw in batch["frames"]))
 
     def test_failed_batch_retries_identical_bytes_and_status_recovers(self):
         self.failures=1;self.args.duration=15
