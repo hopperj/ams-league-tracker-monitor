@@ -66,7 +66,9 @@ def main():
                 if outgoing.pending():
                     transport.health(config['recorder_id'])
                 while outgoing.pending():
-                    batch_id, payload = outgoing.batch(config["recorder_id"], compact=transport.compact_capture)
+                    batch_id, payload = outgoing.batch(
+                        config["recorder_id"], compact=transport.compact_capture,
+                        compact_limit=transport.compact_max_frames)
                     ack = transport.request("/api/batches", payload)
                     if (ack.get("batch_id") != batch_id or ack.get("accepted") is not True
                             or ("stored" in ack and ack["stored"] is not True)):

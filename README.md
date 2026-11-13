@@ -49,7 +49,7 @@ python -m ams_recorder run --hz 120 --batch-seconds 5
 python -m ams_recorder flush
 ```
 
-The default ceiling is 60 snapshots per second, with uploads about every two seconds. Actual capture is bounded by the game's publishing rate, disk speed and unchanged snapshots. `flush` sends saved batches without starting capture and still verifies upload access.
+The default ceiling is 60 snapshots per second. The uploader checks an empty queue about once per second and sends queued batches back-to-back. A compact-capable server can advertise a limit of up to 512 snapshots per batch. Older compact-capable servers and gzip uploads use the 240-frame default. Actual capture is bounded by the game's publishing rate, disk speed and unchanged snapshots. `flush` sends saved batches without starting capture and still verifies upload access.
 
 For automatic Human/AI labels, enable **UDP Protocol Version: Project CARS 2** and a nonzero UDP frequency in AMS2. Keep shared memory enabled. The monitor checks the UDP roster and car positions against its shared-memory snapshots before uploading the game’s participant flags. Missing, unsupported and unmatched UDP data leaves the type unknown. The webapp can also identify the local driver from a Steam-linked personal recording. See the [AMS2 UDP layout reference](https://github.com/RangeyRover/Automobilista-2-Auto-Director/blob/main/SMS_UDP_Definitions_AMS2_RR.hpp).
 

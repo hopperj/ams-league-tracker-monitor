@@ -12,7 +12,7 @@ import time
 import urllib.error
 import uuid
 
-from .compact_wire import MAGIC, MAX_RAW_BYTES, unpack
+from .compact_wire import LEGACY_COMPACT_MAX_FRAMES, MAGIC, MAX_RAW_BYTES, unpack
 from .configuration import prepare_configuration
 from .decoder import PHASES, decode, plain
 from .memory import MemoryReader, MemoryUnavailable, SnapshotBusy
@@ -91,7 +91,9 @@ def run(args, stop_event=None, on_event=None):
                             anchor_delta = time.time()*1000 - (anchor_wall + (time.monotonic()-anchor_mono)*1000)
                             clock.update(offset=offset+anchor_delta, uncertainty=uncertainty, last_sync=time.monotonic())
                         checking_health = False
-                        batch = outgoing.batch(config["recorder_id"], compact=getattr(transport, "compact_capture", False))
+                        batch = outgoing.batch(
+                            config["recorder_id"], compact=getattr(transport, "compact_capture", False),
+                            compact_limit=getattr(transport, "compact_max_frames", LEGACY_COMPACT_MAX_FRAMES))
                         if batch:
                             batch_id, body = batch
                             report("queued", pending=outgoing.pending())

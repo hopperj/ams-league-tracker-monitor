@@ -8,7 +8,7 @@ import uuid
 import zlib
 from pathlib import Path
 
-from .compact_wire import MAX_RAW_BYTES, pack
+from .compact_wire import MAX_FRAMES, MAX_RAW_BYTES, pack
 from .decoder import decode
 from .transport import canonical_server
 
@@ -86,11 +86,15 @@ class Spool:
         # after a large backlog had been acknowledged.
         return int(self.db.execute("SELECT value FROM metadata WHERE key='queued_bytes'").fetchone()[0]) + self.db.execute("SELECT coalesce(sum(length(payload)),0) FROM outbox").fetchone()[0]
 
-    def batch(self, recorder_id, limit=MAX_BATCH_FRAMES, *, compact=False):
+    def batch(self, recorder_id, limit=None, *, compact=False, compact_limit=MAX_FRAMES):
         row = self.db.execute("SELECT id,payload FROM outbox LIMIT 1").fetchone()
         if row:
             return row
-        rows = self.db.execute("SELECT id,event_code,run_id,payload FROM frames ORDER BY id LIMIT ?", (limit,)).fetchall()
+        gzip_limit = MAX_BATCH_FRAMES if limit is None else limit
+        fetch_limit = gzip_limit
+        if compact:
+            fetch_limit = min(compact_limit, MAX_FRAMES if limit is None else min(limit, MAX_FRAMES))
+        rows = self.db.execute("SELECT id,event_code,run_id,payload FROM frames ORDER BY id LIMIT ?", (fetch_limit,)).fetchall()
         if not rows:
             return None
         # Keep each batch within one event and process run. Old backlog keeps its original destination.
@@ -109,7 +113,7 @@ class Spool:
         suffix = b']}'
         frames = []
         size = len(prefix) + len(suffix)
-        for row in rows:
+        for row in rows[:gzip_limit]:
             if row[1:3] != (event, run):
                 break
             stored = row[3]

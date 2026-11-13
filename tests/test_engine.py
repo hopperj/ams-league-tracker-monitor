@@ -24,6 +24,7 @@ class EngineTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.failures = 0
         self.capture_formats = []
+        self.compact_max_frames = {}
         self.registration_failures = 0
         self.registrations = []
         self.recorder_id = "recorder"
@@ -63,7 +64,8 @@ class EngineTest(unittest.TestCase):
                     if not owner.linked:
                         self.send(403, {'error': 'Link Steam account', 'code': 'steam_link_required'});return
                     self.send(200, dict(nonce=body['nonce'], recorder_id=owner.recorder_id,
-                        account_linked=True, upload_ready=True, account_name='Alex Morgan', capture_formats=owner.capture_formats))
+                        account_linked=True, upload_ready=True, account_name='Alex Morgan',
+                        capture_formats=owner.capture_formats, **owner.compact_max_frames))
                     return
                 owner.retry_bytes.append(raw)
                 owner.ack_modes.append(self.headers.get('X-AMS-Upload-Ack'))
@@ -118,6 +120,34 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(batch["schema_version"], 2)
         self.assertTrue(batch["frames"])
         self.assertTrue(all(meta["synthetic"] and len(raw) > 1000 for meta, raw in batch["frames"]))
+
+    def test_backlog_uses_the_servers_compact_batch_limit(self):
+        self.capture_formats = [ENCODING]
+        self.ack_extras = {'stored': True}
+        self.args.demo = False
+        self.args.batch_seconds = 5
+        self.args.duration = 5
+        raw = snapshot(91)
+        for advertised, expected in (({}, [240, 240, 33]), ({'compact_max_frames': 512}, [512, 1])):
+            with self.subTest(advertised=advertised):
+                self.compact_max_frames = advertised
+                self.received.clear()
+                queue = Spool(self.args.spool)
+                for i in range(513):
+                    queue.append_raw("TEST", "saved-run", {"sequence": i}, raw)
+                queue.close()
+                stop = threading.Event()
+
+                def progress(kind, **values):
+                    if kind == "uploaded" and values["pending"] == 0:
+                        stop.set()
+
+                with patch("ams_recorder.engine.MemoryReader") as reader:
+                    reader.return_value.read.side_effect = MemoryUnavailable("Waiting for AMS2.")
+                    run(self.args, stop, progress)
+                frames = [batch["frames"] for batch in self.received.values()]
+                self.assertEqual(list(map(len, frames)), expected)
+                self.assertEqual([meta["sequence"] for group in frames for meta, _ in group], list(range(513)))
 
     def test_failed_batch_retries_identical_bytes_and_status_recovers(self):
         self.failures=1;self.args.duration=15

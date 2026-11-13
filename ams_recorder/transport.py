@@ -6,7 +6,7 @@ import urllib.parse
 import urllib.error
 import urllib.request
 
-from .compact_wire import ENCODING, MAGIC, MEDIA_TYPE
+from .compact_wire import ENCODING, LEGACY_COMPACT_MAX_FRAMES, MAGIC, MAX_FRAMES, MEDIA_TYPE
 
 DEFAULT_SERVER = 'https://ams2.ioresearch.ca'
 LEGACY_SERVER = DEFAULT_SERVER + ':5443'
@@ -31,6 +31,7 @@ class Transport:
             raise ValueError("Use the server origin without a path, query, or fragment")
         self.server, self.token = server.rstrip("/"), token
         self.compact_capture = False
+        self.compact_max_frames = LEGACY_COMPACT_MAX_FRAMES
         # Never forward bearer credentials across an HTTP redirect.
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -84,6 +85,8 @@ class Transport:
             raise ValueError('The server did not confirm linked recorder upload access')
         formats = result.get("capture_formats")
         self.compact_capture = isinstance(formats, list) and ENCODING in formats
+        limit = result.get("compact_max_frames")
+        self.compact_max_frames = min(MAX_FRAMES, limit) if type(limit) is int and limit > 0 else LEGACY_COMPACT_MAX_FRAMES
         return result
 
     def clock(self, cancel=None):

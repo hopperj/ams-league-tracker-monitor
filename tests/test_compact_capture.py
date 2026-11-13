@@ -5,7 +5,7 @@ import tempfile
 import unittest
 import uuid
 
-from ams_recorder.compact_wire import MAGIC, pack, unpack
+from ams_recorder.compact_wire import MAGIC, MAX_RAW_BYTES, pack, unpack
 from ams_recorder.decoder import decode
 from ams_recorder.demo import snapshot
 from ams_recorder.spool import Spool
@@ -39,6 +39,22 @@ class CompactCaptureTest(unittest.TestCase):
             spool.acknowledge(ident)
             self.assertEqual(spool.pending(), 0)
             spool.close()
+
+    def test_compact_batch_splits_at_the_expanded_byte_limit(self):
+        folder = self.enterContext(tempfile.TemporaryDirectory())
+        spool = Spool(Path(folder) / "spool.sqlite3")
+        self.addCleanup(spool.close)
+        raw = bytes(MAX_RAW_BYTES)
+        for sequence in range(512):
+            spool.append_raw("AUTO", "run", {"sequence": sequence}, raw)
+        sent = []
+        while spool.pending():
+            ident, payload = spool.batch("recorder", compact=True)
+            _, records = unpack(payload)
+            sent.extend(meta["sequence"] for meta, _ in records)
+            self.assertLess(len(records), 512)
+            spool.acknowledge(ident)
+        self.assertEqual(sent, list(range(512)))
 
     def test_rejects_corrupt_or_mismatched_records(self):
         header = dict(schema_version=2, batch_id="id", recorder_id="rec", run_id="run", event_code="AUTO")
