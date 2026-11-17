@@ -78,6 +78,18 @@ class Spool:
             self.db.execute("INSERT INTO frames(event_code,run_id,payload) VALUES(?,?,?)",
                             (event_code, run_id, payload))
 
+    def append_frames(self, event_code, run_id, frames, *, checkpoint=None):
+        rows = [(event_code, run_id, gzip.compress(encode(frame), mtime=0)) for frame in frames]
+        with self.db:
+            self.db.executemany("INSERT INTO frames(event_code,run_id,payload) VALUES(?,?,?)", rows)
+            if checkpoint is not None:
+                key, value = checkpoint
+                self.db.execute("INSERT OR REPLACE INTO metadata VALUES(?,?)", (key, encode(value)))
+
+    def checkpoint(self, key):
+        row = self.db.execute("SELECT value FROM metadata WHERE key=?", (key,)).fetchone()
+        return json.loads(row[0]) if row else None
+
     def pending(self):
         return self.db.execute("SELECT count(*) FROM frames").fetchone()[0]
 
