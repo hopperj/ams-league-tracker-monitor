@@ -4,6 +4,11 @@ Changes are listed newest first. Entries under Unreleased describe source change
 
 ## Unreleased
 
+## 0.6.9
+
+- Add **Join server** beside **Open webapp**. Fetch the current dedicated-server connection and launch AMS2 through Steam; private lobbies ask for a password without saving it.
+- Keep recording and uploads running during server lookup and the password prompt. Connection or Steam-launch failures leave recording controls available.
+
 ## 0.6.8
 
 - Add an **Open webapp** button to the recorder header. It opens the configured webapp's dashboard in the default browser while recording continues.

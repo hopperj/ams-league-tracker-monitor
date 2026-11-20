@@ -4,7 +4,7 @@ Windows recorder for Automobilista 2. It preserves complete shared-memory snapsh
 
 [Download published Windows builds](https://github.com/hopperj/ams-league-tracker-monitor/releases/latest) · [Changelog](CHANGELOG.md) · [Upload protocol](docs/protocol-v1.md)
 
-The source version is **0.6.7**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
+The source version is **0.6.9**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
 
 ## Driver setup
 
@@ -15,6 +15,8 @@ The source version is **0.6.7**. Its Steam requirement, health checks and status
 5. **Setup** is for changing the server address or using a specific capture code. With the default server and **AUTO**, practice, qualifying and races are captured automatically. League-night approval happens separately on the website.
 
 Opening the recorder enables recording automatically. The app waits for server confirmation of the Steam link and for AMS2 driving data. Use **Stop** to pause and **Start recording** to resume. Removed links or denied credentials pause capture. Older clients must also be linked to upload to the updated server.
+
+Use **Join server** in the top bar to launch AMS2 through Steam and connect to the current dedicated server. Private lobbies ask for their password; it is not saved. The connection is checked each time, and recording continues during lookup and the password prompt. **Open webapp** opens your dashboard in the default browser.
 
 The personalized setup file is single-use and has no expiry. Browser approval links last 20 minutes; use **Link Steam account** again if one expires. Approved installation links have no time limit. Updates preserve the installation ID, private upload credential, destination and queued bytes.
 

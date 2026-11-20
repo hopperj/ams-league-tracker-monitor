@@ -15,6 +15,7 @@ from .configuration import DEFAULT_SERVER, connection_values, defaults, prepare_
 from . import __version__, updates
 from .engine import DEFAULT_BATCH_SECONDS, run
 from .enrollment import prepare_enrolled, connect as connect_account
+from .join import JoinError, current_server, steam_url
 from .status import RecorderStatus, upload_problem
 from .transport import canonical_server
 
@@ -37,6 +38,8 @@ class RecorderWindow:
         self.config = None
         self.worker = None
         self.link_thread = None
+        self.join_thread = None
+        self.join_dialog = None
         self.approval_url = None
         self.account_linked = False
         self.auto_link_attempted = False
@@ -53,8 +56,8 @@ class RecorderWindow:
         self.status = RecorderStatus()
         root.title("AMS League Recorder" + (" — DEMO" if demo else ""))
         root.configure(background=PAPER)
-        root.minsize(470, 530)
-        root.geometry("540x580")
+        root.minsize(470, 570)
+        root.geometry("540x620")
         family = font.nametofont("TkDefaultFont").actual("family")
         self.family = family
         root.option_add("*Font", (family, 11))
@@ -67,10 +70,16 @@ class RecorderWindow:
         style.configure("TEntry", padding=7)
         header = tk.Frame(root, background="#171c21", padx=22, pady=17)
         header.pack(fill="x")
-        tk.Label(header, text="AMS", font=(family, 16, "bold"), foreground=ORANGE, background="#171c21").pack(side="left")
-        tk.Label(header, text="  LEAGUE RECORDER", font=(family, 11), foreground="white", background="#171c21").pack(side="left")
-        self.webapp_button = ttk.Button(header, text="Open webapp", command=self.open_webapp)
-        self.webapp_button.pack(side="right", padx=(12, 0))
+        brand = tk.Frame(header, background="#171c21")
+        brand.pack(fill="x")
+        tk.Label(brand, text="AMS", font=(family, 16, "bold"), foreground=ORANGE, background="#171c21").pack(side="left")
+        tk.Label(brand, text="  LEAGUE RECORDER", font=(family, 11), foreground="white", background="#171c21").pack(side="left")
+        links = tk.Frame(header, background="#171c21")
+        links.pack(fill="x", pady=(12, 0))
+        self.join_button = ttk.Button(links, text="Join server", style="Start.TButton", command=self.join_server)
+        self.join_button.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self.webapp_button = ttk.Button(links, text="Open webapp", command=self.open_webapp)
+        self.webapp_button.pack(side="left", fill="x", expand=True, padx=(5, 0))
         body = tk.Frame(root, background=PAPER, padx=22, pady=20)
         body.pack(fill="both", expand=True)
         identity = tk.Frame(body, background=PAPER)
@@ -164,6 +173,81 @@ class RecorderWindow:
     def open_webapp(self):
         server = canonical_server((self.config or {}).get('server', DEFAULT_SERVER))
         webbrowser.open(server + '/dashboard')
+
+    def join_server(self):
+        if self.closing or self.join_thread:
+            return
+        if self.join_dialog:
+            self.join_dialog.lift()
+            return
+        server = (self.config or {}).get('server', DEFAULT_SERVER)
+        self.join_button.configure(text='Finding server…', state='disabled')
+
+        def lookup():
+            try:
+                self.messages.put(('join_ready', current_server(server)))
+            except JoinError as error:
+                self.messages.put(('join_error', str(error)))
+            except Exception as error:
+                LOG.warning('Dedicated server lookup unavailable (%s)', type(error).__name__)
+                self.messages.put(('join_error', 'Could not reach the league webapp. Check your connection and try again.'))
+
+        self.join_thread = threading.Thread(target=lookup, name='join-server', daemon=True)
+        self.join_thread.start()
+
+    def join_error(self, message):
+        from tkinter import messagebox
+        messagebox.showerror('Could not join server', message, parent=self.root)
+
+    def launch_join(self, join, password=''):
+        try:
+            if not webbrowser.open(steam_url(join, password)):
+                raise OSError('Steam protocol unavailable')
+        except (OSError, ValueError):
+            self.join_error('Could not open AMS2 through Steam. Check that Steam and AMS2 are installed, then try again.')
+
+    def show_join(self, join):
+        if not join['password']:
+            self.launch_join(join)
+            return
+        popup = self.tk.Toplevel(self.root)
+        self.join_dialog = popup
+        popup.title('Join in AMS2')
+        popup.configure(background=PAPER)
+        popup.transient(self.root)
+        popup.resizable(False, False)
+        content = self.tk.Frame(popup, background=PAPER, padx=22, pady=20)
+        content.pack(fill='both', expand=True)
+        self.tk.Label(content, text=join['name'], background=PAPER, foreground=INK,
+                      font=(self.family, 12, 'bold'), wraplength=330, justify='left').pack(anchor='w')
+        self.tk.Label(content, text='Enter the lobby password to join in AMS2.', background=PAPER,
+                      foreground=MUTED, wraplength=330, justify='left').pack(anchor='w', pady=(8, 12))
+        entry = self.ttk.Entry(content, show='*', width=32)
+        entry.pack(fill='x')
+        self.join_password = entry
+        actions = self.tk.Frame(content, background=PAPER)
+        actions.pack(fill='x', pady=(14, 0))
+
+        def dismiss():
+            entry.delete(0, 'end')
+            self.join_dialog = None
+            self.join_password = None
+            popup.destroy()
+
+        def submit(event=None):
+            password = entry.get()
+            if not password:
+                entry.focus_set()
+                return
+            dismiss()
+            self.launch_join(join, password)
+
+        self.ttk.Button(actions, text='Cancel', command=dismiss).pack(side='left')
+        self.ttk.Button(actions, text='Join server', style='Start.TButton', command=submit).pack(side='right')
+        popup.protocol('WM_DELETE_WINDOW', dismiss)
+        popup.bind('<Escape>', lambda event: dismiss())
+        entry.bind('<Return>', submit)
+        popup.after_idle(entry.focus_set)
 
     def startup(self):
         if self.worker or self.busy or self.closing or self.update_thread:return
@@ -357,7 +441,13 @@ class RecorderWindow:
         try:
             while True:
                 kind, value = self.messages.get_nowait()
-                if kind == 'update_status':
+                if kind in ('join_ready', 'join_error'):
+                    self.join_thread = None
+                    self.join_button.configure(text='Join server', state='normal')
+                    if not self.closing:
+                        if kind == 'join_ready':self.show_join(value)
+                        else:self.join_error(value)
+                elif kind == 'update_status':
                     self.update_text.set(value)
                 elif kind == 'update_ready':
                     if self.closing or self.update_cancel.is_set() or self.worker:

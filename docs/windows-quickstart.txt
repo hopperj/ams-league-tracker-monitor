@@ -16,6 +16,9 @@ compilation is required.
    AUTO for normal use. Existing settings and queued data survive upgrades.
 5. Click Open webapp in the top bar to open your dashboard in the default
    browser. Recording continues while you use the website.
+6. Click Join server to launch AMS2 through Steam and join the current dedicated
+   server. Private lobbies ask for a password, which is not saved. Recording
+   continues while looking up the server and entering its password.
 
 Green / Comms open, awaiting race data means upload access is verified.
 Red / Recording in progress means live game data is being recorded and sent.
