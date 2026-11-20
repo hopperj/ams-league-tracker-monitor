@@ -80,7 +80,7 @@ def run(args, stop_event=None, on_event=None):
                             info = transport.health(config['recorder_id'])
                             last_health = time.monotonic()
                             capture_allowed.set()
-                            report('comms_ok', account_name=info.get('account_name'))
+                            report('comms_ok', account_name=info.get('account_name'), processing=info.get('processing'))
                         if not clock["last_sync"] or time.monotonic() - clock["last_sync"] > 60:
                             offset, uncertainty, info = transport.clock(cancel=stop)
                             if info["recorder_id"] != config["recorder_id"]:
@@ -209,7 +209,7 @@ def run(args, stop_event=None, on_event=None):
                     if use_raw:
                         decoded = len(raw) >= STRUCT_BYTES and struct.unpack_from("<I", raw)[0] == SUPPORTED_VERSION
                         game_state = struct.unpack_from("<I", raw, SharedMemory.mGameState.offset)[0] if decoded else None
-                        frame = {"driver_name": driver_hint, "consistent": consistent, "synthetic": bool(args.demo), "replay": False}
+                        frame = {"driver_name": driver_hint, "consistent": consistent, "synthetic": bool(args.demo), "replay": game_state in (6, 7)}
                         if udp_participants:
                             if decoded:
                                 state = SharedMemory.from_buffer_copy(raw)
@@ -219,7 +219,7 @@ def run(args, stop_event=None, on_event=None):
                                 context, phase = {}, None
                             proof = dict(frame, game_state=game_state, session=context, phase=phase)
                             udp_participants.annotate(proof, decode_frame=lambda: dict(
-                                decode(raw, driver_hint), consistent=consistent, replay=False))
+                                decode(raw, driver_hint), consistent=consistent, replay=game_state in (6, 7)))
                             if "participant_type_evidence" in proof:
                                 frame["participant_type_evidence"] = proof["participant_type_evidence"]
                     else:
@@ -227,7 +227,8 @@ def run(args, stop_event=None, on_event=None):
                         if replay is not None:
                             frame["original_captured_at_ms"] = replay_frame.get("captured_at_ms")
                         frame.update(source_kind=frame.get("source_kind","shared_memory"), consistent=consistent,
-                                     synthetic=bool(args.demo or (replay is not None and replay_frame.get("synthetic"))), replay=bool(args.replay))
+                                     synthetic=bool(args.demo or (replay is not None and replay_frame.get("synthetic"))),
+                                     replay=bool(args.replay) or frame.get('game_state') in (6, 7))
                         if udp_participants:
                             udp_participants.annotate(frame)
                         decoded, game_state = frame["decoded"], frame.get("game_state")

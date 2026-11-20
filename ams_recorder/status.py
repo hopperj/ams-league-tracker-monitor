@@ -46,6 +46,7 @@ class Indicator:
     pending: int
     last_upload_seconds: object
     last_comms_seconds: object
+    server_pending: object = None
 
     @property
     def green(self):
@@ -71,6 +72,7 @@ class RecorderStatus:
         self.last_upload = None
         self.last_comms = None
         self.pending = 0
+        self.server_pending = None
         self.attention_since = None
         self.healthy_color = 'gray'
 
@@ -86,6 +88,7 @@ class RecorderStatus:
                 self.last_comms = None
                 self.last_capture = self.last_upload = None
                 self.server_notice = None
+                self.server_pending = None
             elif kind == 'updating':
                 self.mode = 'updating'
             elif kind == "captured":
@@ -117,6 +120,9 @@ class RecorderStatus:
                 self.last_comms = at
                 self.comms_error = None
                 self.link_required = False
+                processing = values.get('processing')
+                frames = processing.get('frames') if isinstance(processing, dict) else None
+                self.server_pending = frames if type(frames) is int and frames >= 0 else None
             elif kind == 'comms_error':
                 self.comms_error = values['message']
             elif kind == 'link_required':
@@ -216,4 +222,4 @@ class RecorderStatus:
             else:
                 title = 'Comms open, awaiting race data'
                 detail = 'Steam account linked. Upload access verified. Waiting for an AMS2 driving session.'
-            return Indicator(color, title, detail, self.pending, age, comms_age)
+            return Indicator(color, title, detail, self.pending, age, comms_age, self.server_pending)

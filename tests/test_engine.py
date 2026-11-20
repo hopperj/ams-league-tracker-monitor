@@ -275,6 +275,32 @@ class EngineTest(unittest.TestCase):
         self.assertLess(events.index('comms_ok'), events.index('captured'))
         self.assertIn('uploaded', events)
 
+    def test_game_replay_states_are_archived_in_both_upload_formats(self):
+        from ams_recorder.schema import SharedMemory
+        for formats in ([],[ENCODING]):
+            for state in (6,7):
+                with self.subTest(compact=bool(formats),game_state=state):
+                    self.capture_formats=formats
+                    self.args.demo=False
+                    self.received.clear()
+                    sdk=SharedMemory.from_buffer_copy(snapshot(91))
+                    sdk.mGameState=state
+                    raw=bytes(sdk)
+                    stop=threading.Event()
+                    events=[]
+                    def progress(kind,**values):
+                        if kind=='captured':events.append(values)
+                        if kind=='uploaded':stop.set()
+                    with patch('ams_recorder.engine.MemoryReader') as reader:
+                        reader.return_value.read.return_value=(raw,True)
+                        run(self.args,stop,progress)
+                    self.assertTrue(events)
+                    self.assertTrue(all(event['replay'] for event in events))
+                    for body in self.received.values():
+                        for record in body['frames']:
+                            metadata=record[0] if formats else record
+                            self.assertIs(metadata['replay'],True)
+
     def test_idle_recorder_probes_repeatedly_without_creating_game_uploads(self):
         self.args.demo = False
         status = RecorderStatus();colors = []

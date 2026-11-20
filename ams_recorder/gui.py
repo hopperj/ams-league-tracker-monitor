@@ -56,8 +56,8 @@ class RecorderWindow:
         self.status = RecorderStatus()
         root.title("AMS League Recorder" + (" — DEMO" if demo else ""))
         root.configure(background=PAPER)
-        root.minsize(470, 570)
-        root.geometry("540x620")
+        root.minsize(470, 590)
+        root.geometry("540x640")
         family = font.nametofont("TkDefaultFont").actual("family")
         self.family = family
         root.option_add("*Font", (family, 11))
@@ -116,9 +116,10 @@ class RecorderWindow:
         metrics = tk.Frame(body, background=PAPER)
         metrics.pack(fill="x", pady=(11, 15))
         self.last_upload = tk.StringVar(value="Last upload: —")
-        self.pending = tk.StringVar(value="Queued samples: 0")
+        self.pending = tk.StringVar(value="Queued on PC: 0\nServer processing: —")
         for variable, side in ((self.last_upload, "left"), (self.pending, "right")):
-            tk.Label(metrics, textvariable=variable, background=PAPER, foreground=MUTED, font=(family, 9)).pack(side=side)
+            tk.Label(metrics, textvariable=variable, background=PAPER, foreground=MUTED, font=(family, 9),
+                     justify='right' if side=='right' else 'left').pack(side=side)
         if demo:
             tk.Label(body, text="DEMO — synthetic data only", foreground=ORANGE, background=PAPER, font=(family, 10, "bold")).pack(anchor="w", pady=(0, 10))
         actions = tk.Frame(body, background=PAPER)
@@ -519,7 +520,8 @@ class RecorderWindow:
         else:
             self.title.set(state.title)
             self.detail.set(state.detail)
-        self.pending.set("Queued samples: " + str(state.pending))
+        self.pending.set('Queued on PC: ' + format(state.pending, ',') + '\nServer processing: ' +
+                         ('—' if state.server_pending is None else format(state.server_pending, ',')))
         self.last_upload.set('Comms: '+(str(state.last_comms_seconds)+'s ago' if state.last_comms_seconds is not None else '—')+
                              ' · Upload: '+(str(state.last_upload_seconds)+'s ago' if state.last_upload_seconds is not None else '—'))
         locked = self.worker is not None or self.closing or self.update_thread is not None

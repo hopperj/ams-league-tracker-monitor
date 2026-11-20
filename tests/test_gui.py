@@ -252,9 +252,11 @@ class WindowTest(unittest.TestCase):
         self.root.geometry('470x500')
         self.root.deiconify()
         self.window.status.update('started')
-        self.window.status.update('comms_ok')
+        self.window.status.update('comms_ok',processing={'frames':12345})
         self.window.poll()
         self.root.update()
+        self.assertIn('Queued on PC: 0',self.window.pending.get())
+        self.assertIn('Server processing: 12,345',self.window.pending.get())
         title = self.window.title_label
         self.assertGreaterEqual(title.winfo_height(), title.winfo_reqheight())
         bottom = self.window.start_button.winfo_rooty() + self.window.start_button.winfo_height()

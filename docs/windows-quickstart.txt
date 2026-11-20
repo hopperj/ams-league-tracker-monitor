@@ -29,6 +29,12 @@ seconds, even when AMS2 is closed. Data saved - review means the server saved
 the upload but has processing notes; later uploads continue.
 A league administrator can review those notes in Recording diagnostics.
 
+Queued on PC counts samples still waiting to upload from this computer.
+Server processing counts samples already saved by the webapp and waiting to
+be processed. A server processing queue does not pause recording or uploads.
+Older webapps show a dash for this count. Replay snapshots are archived and
+do not count as live race telemetry.
+
 The app remembers your settings and verifies your Steam link on future launches.
 AUTO records solo practice and league driving across tracks and cars. The server
 organizes sessions; administrators separately approve official league nights.

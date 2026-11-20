@@ -4,6 +4,12 @@ Changes are listed newest first. Entries under Unreleased describe source change
 
 ## Unreleased
 
+## 0.6.10
+
+- Distinguish **Queued on PC** from **Server processing** so successfully uploaded recordings do not look lost while the webapp processes them. Server counts refresh with the existing health check; they do not pause capture or uploads.
+- Mark in-game and front-end replay snapshots as replay archives instead of live driving, while retaining their original bytes.
+- Keep queued uploads back-to-back, including partial batches; the webapp combines stored small uploads for efficient processing.
+
 ## 0.6.9
 
 - Add **Join server** beside **Open webapp**. Fetch the current dedicated-server connection and launch AMS2 through Steam; private lobbies ask for a password without saving it.
