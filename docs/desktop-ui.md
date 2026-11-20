@@ -2,6 +2,8 @@
 
 The desktop client is implemented in `ams_recorder/gui.py`, using Python's [Tkinter](https://docs.python.org/3/library/tkinter.html). The window shows driver and session identity, one status light, an explanation, last-upload age, queued sample count, and Start/Stop controls. Connection settings are in a separate setup window.
 
+**Open webapp** in the top bar opens the configured server's dashboard in the default browser. It remains available while recording or checking for updates and uses the browser's normal sign-in session. Recorder credentials are never included in the link. Without a readable saved setup, it opens `https://ams2.ioresearch.ca/dashboard`.
+
 ## Meaning of the light
 
 Green means the server confirmed upload access and the recorder is waiting for driving data. Red means it is recording. Gray covers checking, updating and stopped states. A successful upload requires the expected batch ID, `accepted: true`, and `stored: true` when supplied by the server. The recorder commits the local queue acknowledgement before reporting success.

@@ -66,11 +66,14 @@ class WindowTest(unittest.TestCase):
             self.assertIsNot(threading.current_thread(),threading.main_thread())
             on_event("started");on_event('comms_ok');on_event("captured",decoded=True,consistent=True,game_state=2);on_event("uploaded",pending=0)
             stop.wait(3);on_event("stopped",pending=0)
-        with patch("ams_recorder.gui.run",side_effect=recorder):
+        with patch("ams_recorder.gui.run",side_effect=recorder), patch("ams_recorder.gui.webbrowser.open") as browser:
             self.window.start()
             limit=time.monotonic()+3
             while time.monotonic()<limit and self.window.title.get()!="Recording in progress":self.root.update();time.sleep(.01)
             self.assertEqual(self.window.title.get(),"Recording in progress")
+            self.window.webapp_button.invoke()
+            browser.assert_called_once_with('http://127.0.0.1:8787/dashboard')
+            self.assertTrue(self.window.worker.is_alive())
             self.window.stop()
             while time.monotonic()<limit and self.window.worker:self.root.update();time.sleep(.01)
             self.assertIsNone(self.window.worker)
@@ -172,6 +175,10 @@ class WindowTest(unittest.TestCase):
         self.assertGreaterEqual(title.winfo_height(), title.winfo_reqheight())
         bottom = self.window.start_button.winfo_rooty() + self.window.start_button.winfo_height()
         self.assertLessEqual(bottom, self.root.winfo_rooty() + self.root.winfo_height())
+        button = self.window.webapp_button
+        self.assertTrue(button.winfo_ismapped())
+        self.assertGreaterEqual(button.winfo_height(), button.winfo_reqheight())
+        self.assertLessEqual(button.winfo_rootx() + button.winfo_width(), self.root.winfo_rootx() + self.root.winfo_width())
         self.root.withdraw()
 
     def test_first_launch_creates_an_offline_connection_without_a_setup_prompt(self):

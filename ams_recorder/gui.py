@@ -16,6 +16,7 @@ from . import __version__, updates
 from .engine import DEFAULT_BATCH_SECONDS, run
 from .enrollment import prepare_enrolled, connect as connect_account
 from .status import RecorderStatus, upload_problem
+from .transport import canonical_server
 
 PAPER, INK, MUTED = "#f3f5f4", "#1a222b", "#6d7883"
 RED, GREEN, ORANGE = "#c7423a", "#27835b", "#e45c2b"
@@ -68,6 +69,8 @@ class RecorderWindow:
         header.pack(fill="x")
         tk.Label(header, text="AMS", font=(family, 16, "bold"), foreground=ORANGE, background="#171c21").pack(side="left")
         tk.Label(header, text="  LEAGUE RECORDER", font=(family, 11), foreground="white", background="#171c21").pack(side="left")
+        self.webapp_button = ttk.Button(header, text="Open webapp", command=self.open_webapp)
+        self.webapp_button.pack(side="right", padx=(12, 0))
         body = tk.Frame(root, background=PAPER, padx=22, pady=20)
         body.pack(fill="both", expand=True)
         identity = tk.Frame(body, background=PAPER)
@@ -157,6 +160,10 @@ class RecorderWindow:
             else:
                 self.start()
         self.poll()
+
+    def open_webapp(self):
+        server = canonical_server((self.config or {}).get('server', DEFAULT_SERVER))
+        webbrowser.open(server + '/dashboard')
 
     def startup(self):
         if self.worker or self.busy or self.closing or self.update_thread:return

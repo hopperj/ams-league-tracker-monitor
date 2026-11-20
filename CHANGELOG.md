@@ -4,6 +4,11 @@ Changes are listed newest first. Entries under Unreleased describe source change
 
 ## Unreleased
 
+## 0.6.8
+
+- Add an **Open webapp** button to the recorder header. It opens the configured webapp's dashboard in the default browser while recording continues.
+- Support native AMS2 dedicated-server snapshots and log events through the dedicated recorder mode.
+
 ## 0.6.7
 
 - Upload lossless compact AMS2 snapshots when the server supports the format, with up to 512 frames per batch for backlog recovery.
