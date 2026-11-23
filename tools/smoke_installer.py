@@ -23,7 +23,9 @@ def setup(executable, directory, log):
 
 
 def shortcuts(name):
-    script = '''$shell = New-Object -ComObject WScript.Shell
+    script = '''$ErrorActionPreference = 'Stop'
+    [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+    $shell = New-Object -ComObject WScript.Shell
     $items = @('Programs', 'Desktop') | ForEach-Object {
       $link = Join-Path $shell.SpecialFolders.Item($_) ($env:AMS_SMOKE_NAME + '.lnk')
       if (!(Test-Path -LiteralPath $link)) { throw "Missing shortcut: $link" }
@@ -33,7 +35,7 @@ def shortcuts(name):
     ConvertTo-Json -InputObject @($items) -Compress
     '''
     result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', script],
-        env={**os.environ, 'AMS_SMOKE_NAME': name}, check=True, capture_output=True, text=True, timeout=20)
+        env={**os.environ, 'AMS_SMOKE_NAME': name}, check=True, capture_output=True, encoding='utf-8', timeout=20)
     return json.loads(result.stdout)
 
 
@@ -44,7 +46,7 @@ def main():
     if not name.startswith('AMS League Recorder smoke '):
         raise SystemExit('Only run the disposable smoke-test installer here')
     with tempfile.TemporaryDirectory(prefix='recorder-installed-') as folder:
-        root = Path(folder)
+        root = Path(folder).resolve()
         install = root / "Racer's installed recorder é"
         data = root / 'saved-recorder-data'; data.mkdir()
         target = install / INSTALLED_EXE
