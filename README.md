@@ -4,7 +4,7 @@ Windows recorder for Automobilista 2. It preserves complete shared-memory snapsh
 
 [Download published Windows builds](https://github.com/hopperj/ams-league-tracker-monitor/releases/latest) · [Changelog](CHANGELOG.md) · [Upload protocol](docs/protocol-v1.md)
 
-The source version is **0.6.3**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
+The source version is **0.6.10**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
 
 ## Driver setup
 
@@ -15,6 +15,8 @@ The source version is **0.6.3**. Its Steam requirement, health checks and status
 5. **Setup** is for changing the server address or using a specific capture code. With the default server and **AUTO**, practice, qualifying and races are captured automatically. League-night approval happens separately on the website.
 
 Opening the recorder enables recording automatically. The app waits for server confirmation of the Steam link and for AMS2 driving data. Use **Stop** to pause and **Start recording** to resume. Removed links or denied credentials pause capture. Older clients must also be linked to upload to the updated server.
+
+Use **Join server** in the top bar to launch AMS2 through Steam and connect to the current dedicated server. Private lobbies ask for their password; it is not saved. The connection is checked each time, and recording continues during lookup and the password prompt. **Open webapp** opens your dashboard in the default browser.
 
 The personalized setup file is single-use and has no expiry. Browser approval links last 20 minutes; use **Link Steam account** again if one expires. Approved installation links have no time limit. Updates preserve the installation ID, private upload credential, destination and queued bytes.
 
@@ -28,6 +30,8 @@ The personalized setup file is single-use and has no expiry. Browser approval li
 | Gray | **Checking connection**, **Stopping** or **Not recording** | The recorder is checking access or is stopped. |
 
 The recorder sends an authenticated gzip POST to `/api/recorder/health` every five seconds, including while AMS2 is closed. The server uses the same access checks as uploads, commits a bounded heartbeat row and echoes a fresh challenge. Probes create no race sessions or capture receipts. A successful probe cannot clear a failed data upload: that batch must receive a valid acknowledgement.
+
+**Queued on PC** counts samples that still need uploading. **Server processing** counts samples already stored on the webapp and awaiting processing; this count is informational and does not pause recording or uploads. Older webapps show a dash. Both in-game and front-end replay snapshots are marked as replay archives.
 
 Errors override the red recording status. **Data saved — review** means the server saved an upload with processing notes; delivery continues. Queued data is retained after failed uploads, stopping or closing. After a verified run loses communication, capture can continue locally while uploads retry; a fresh run waits for server verification. The window shows communication/upload ages and queued sample counts.
 
@@ -49,7 +53,7 @@ python -m ams_recorder run --hz 120 --batch-seconds 5
 python -m ams_recorder flush
 ```
 
-The default ceiling is 60 snapshots per second, with uploads about every two seconds. Actual capture is bounded by the game's publishing rate, disk speed and unchanged snapshots. `flush` sends saved batches without starting capture and still verifies upload access.
+The default ceiling is 60 snapshots per second. The uploader checks an empty queue about once per second and sends queued batches back-to-back. A compact-capable server can advertise a limit of up to 512 snapshots per batch. Older compact-capable servers and gzip uploads use the 240-frame default. Actual capture is bounded by the game's publishing rate, disk speed and unchanged snapshots. `flush` sends saved batches without starting capture and still verifies upload access.
 
 For automatic Human/AI labels, enable **UDP Protocol Version: Project CARS 2** and a nonzero UDP frequency in AMS2. Keep shared memory enabled. The monitor checks the UDP roster and car positions against its shared-memory snapshots before uploading the game’s participant flags. Missing, unsupported and unmatched UDP data leaves the type unknown. The webapp can also identify the local driver from a Steam-linked personal recording. See the [AMS2 UDP layout reference](https://github.com/RangeyRover/Automobilista-2-Auto-Director/blob/main/SMS_UDP_Definitions_AMS2_RR.hpp).
 

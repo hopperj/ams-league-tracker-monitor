@@ -6,6 +6,8 @@ import urllib.parse
 import urllib.error
 import urllib.request
 
+from .compact_wire import ENCODING, LEGACY_COMPACT_MAX_FRAMES, MAGIC, MAX_FRAMES, MEDIA_TYPE
+
 DEFAULT_SERVER = 'https://ams2.ioresearch.ca'
 LEGACY_SERVER = DEFAULT_SERVER + ':5443'
 
@@ -28,6 +30,8 @@ class Transport:
         if parsed.query or parsed.fragment or parsed.path not in ("", "/"):
             raise ValueError("Use the server origin without a path, query, or fragment")
         self.server, self.token = server.rstrip("/"), token
+        self.compact_capture = False
+        self.compact_max_frames = LEGACY_COMPACT_MAX_FRAMES
         # Never forward bearer credentials across an HTTP redirect.
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -38,6 +42,11 @@ class Transport:
         headers = {"Authorization": "Bearer " + self.token, "Accept": "application/json"}
         if payload is not None:
             headers.update({"Content-Type": "application/json", "Content-Encoding": "gzip"})
+            if path == "/api/batches":
+                headers["X-AMS-Upload-Ack"] = "stored"
+                if payload.startswith(MAGIC):
+                    headers["Content-Type"] = MEDIA_TYPE
+                    headers.pop("Content-Encoding")
         req = urllib.request.Request(self.server + path, data=payload, headers=headers)
         try:
             response = self.opener.open(req, timeout=15)
@@ -74,6 +83,10 @@ class Transport:
         if (result.get('nonce') != nonce or result.get('recorder_id') != recorder_id
                 or result.get('upload_ready') is not True or result.get('account_linked') is not True):
             raise ValueError('The server did not confirm linked recorder upload access')
+        formats = result.get("capture_formats")
+        self.compact_capture = isinstance(formats, list) and ENCODING in formats
+        limit = result.get("compact_max_frames")
+        self.compact_max_frames = min(MAX_FRAMES, limit) if type(limit) is int and limit > 0 else LEGACY_COMPACT_MAX_FRAMES
         return result
 
     def clock(self, cancel=None):

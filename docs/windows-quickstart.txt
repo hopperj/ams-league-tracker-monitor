@@ -14,6 +14,11 @@ compilation is required.
    pause and Start recording to resume. Setup is optional and lets you change
    the server address or capture code. Keep https://ams2.ioresearch.ca and
    AUTO for normal use. Existing settings and queued data survive upgrades.
+5. Click Open webapp in the top bar to open your dashboard in the default
+   browser. Recording continues while you use the website.
+6. Click Join server to launch AMS2 through Steam and join the current dedicated
+   server. Private lobbies ask for a password, which is not saved. Recording
+   continues while looking up the server and entering its password.
 
 Green / Comms open, awaiting race data means upload access is verified.
 Red / Recording in progress means live game data is being recorded and sent.
@@ -23,6 +28,12 @@ Gray means checking, stopping or stopped. Communication is checked every five
 seconds, even when AMS2 is closed. Data saved - review means the server saved
 the upload but has processing notes; later uploads continue.
 A league administrator can review those notes in Recording diagnostics.
+
+Queued on PC counts samples still waiting to upload from this computer.
+Server processing counts samples already saved by the webapp and waiting to
+be processed. A server processing queue does not pause recording or uploads.
+Older webapps show a dash for this count. Replay snapshots are archived and
+do not count as live race telemetry.
 
 The app remembers your settings and verifies your Steam link on future launches.
 AUTO records solo practice and league driving across tracks and cars. The server

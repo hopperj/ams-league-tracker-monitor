@@ -50,7 +50,7 @@ class ParticipantCache:
                 rosters.pop(next(iter(rosters)))
             rosters.setdefault(key, {})[part] = packet
 
-    def annotate(self, frame):
+    def annotate(self, frame, *, decode_frame=None):
         if frame.get('game_state') not in (2, 3, 4):
             with self.lock:
                 self.senders.clear()
@@ -74,10 +74,13 @@ class ParticipantCache:
                     continue
                 names = [list(parts.values()) for (rev, _), parts in state['names'].items() if rev == revision]
                 candidates.append((timing, age, names))
+        if not candidates:
+            return
+        source = decode_frame() if decode_frame is not None else frame
         accepted = []
         for timing, age, rosters in candidates:
             for names in reversed(rosters):
-                types = match_participants(frame, timing, names, age)
+                types = match_participants(source, timing, names, age)
                 if types:
                     accepted.append((types, timing, names, age))
                     break
@@ -89,7 +92,7 @@ class ParticipantCache:
             'timing': base64.b64encode(timing).decode('ascii'),
             'names': [base64.b64encode(packet).decode('ascii') for packet in names],
         }
-        for p in frame['participants']:
+        for p in frame.get('participants', []):
             if p['slot'] in types:
                 p['participant_type'] = types[p['slot']]
 

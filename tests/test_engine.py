@@ -9,9 +9,10 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from ams_recorder.compact_wire import ENCODING, MEDIA_TYPE, unpack
 from ams_recorder.configuration import save_configuration
 from ams_recorder.engine import run
-from ams_recorder.spool import Spool
+from ams_recorder.spool import MAX_BATCH_FRAMES, Spool
 from ams_recorder.status import RecorderStatus
 from ams_recorder.demo import snapshot
 from ams_recorder.memory import MemoryUnavailable, SnapshotBusy
@@ -22,6 +23,8 @@ class EngineTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.failures = 0
+        self.capture_formats = []
+        self.compact_max_frames = {}
         self.registration_failures = 0
         self.registrations = []
         self.recorder_id = "recorder"
@@ -33,6 +36,7 @@ class EngineTest(unittest.TestCase):
         self.health_calls = []
         self.health_failures = 0
         self.retry_bytes = []
+        self.ack_modes = []
         owner = self
         class Handler(BaseHTTPRequestHandler):
             def log_message(self,*args): pass
@@ -42,7 +46,11 @@ class EngineTest(unittest.TestCase):
                 self.send(200,{"recorder_id":owner.recorder_id, "driver_name":"Alex Morgan", "server_time_ms":int(time.time()*1000)})
             def do_POST(self):
                 raw=self.rfile.read(int(self.headers["Content-Length"]))
-                body=json.loads(gzip.decompress(raw))
+                if self.headers.get('Content-Type') == MEDIA_TYPE:
+                    body, frames = unpack(raw)
+                    body['frames'] = frames
+                else:
+                    body=json.loads(gzip.decompress(raw))
                 if self.path=='/api/recorders/register':
                     owner.registrations.append((body,self.headers['Authorization']))
                     if owner.registration_failures:
@@ -56,9 +64,11 @@ class EngineTest(unittest.TestCase):
                     if not owner.linked:
                         self.send(403, {'error': 'Link Steam account', 'code': 'steam_link_required'});return
                     self.send(200, dict(nonce=body['nonce'], recorder_id=owner.recorder_id,
-                        account_linked=True, upload_ready=True, account_name='Alex Morgan'))
+                        account_linked=True, upload_ready=True, account_name='Alex Morgan',
+                        capture_formats=owner.capture_formats, **owner.compact_max_frames))
                     return
                 owner.retry_bytes.append(raw)
+                owner.ack_modes.append(self.headers.get('X-AMS-Upload-Ack'))
                 if owner.failures:
                     owner.failures-=1;self.send(503,{"error":"unavailable"});return
                 if not owner.bad_ack: owner.received[body["batch_id"]]=body
@@ -91,6 +101,54 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(uploaded+spool.pending(),events.count("captured"));spool.close()
         self.assertFalse(status.snapshot().green)
 
+    def test_negotiated_upload_spools_raw_memory_and_uses_binary_http(self):
+        self.capture_formats = [ENCODING]
+        stop = threading.Event()
+        events = []
+
+        def progress(kind, **values):
+            events.append(kind)
+            if kind == "uploaded":
+                stop.set()
+
+        # The negotiated recorder path should not build a full SDK JSON frame.
+        self.args.duration = 4
+        with patch("ams_recorder.engine.decode", side_effect=AssertionError("Recorder decoded the raw snapshot")):
+            run(self.args, stop_event=stop, on_event=progress)
+        self.assertIn("uploaded", events)
+        batch = next(iter(self.received.values()))
+        self.assertEqual(batch["schema_version"], 2)
+        self.assertTrue(batch["frames"])
+        self.assertTrue(all(meta["synthetic"] and len(raw) > 1000 for meta, raw in batch["frames"]))
+
+    def test_backlog_uses_the_servers_compact_batch_limit(self):
+        self.capture_formats = [ENCODING]
+        self.ack_extras = {'stored': True}
+        self.args.demo = False
+        self.args.batch_seconds = 5
+        self.args.duration = 5
+        raw = snapshot(91)
+        for advertised, expected in (({}, [240, 240, 33]), ({'compact_max_frames': 512}, [512, 1])):
+            with self.subTest(advertised=advertised):
+                self.compact_max_frames = advertised
+                self.received.clear()
+                queue = Spool(self.args.spool)
+                for i in range(513):
+                    queue.append_raw("TEST", "saved-run", {"sequence": i}, raw)
+                queue.close()
+                stop = threading.Event()
+
+                def progress(kind, **values):
+                    if kind == "uploaded" and values["pending"] == 0:
+                        stop.set()
+
+                with patch("ams_recorder.engine.MemoryReader") as reader:
+                    reader.return_value.read.side_effect = MemoryUnavailable("Waiting for AMS2.")
+                    run(self.args, stop, progress)
+                frames = [batch["frames"] for batch in self.received.values()]
+                self.assertEqual(list(map(len, frames)), expected)
+                self.assertEqual([meta["sequence"] for group in frames for meta, _ in group], list(range(513)))
+
     def test_failed_batch_retries_identical_bytes_and_status_recovers(self):
         self.failures=1;self.args.duration=15
         events=[]
@@ -104,6 +162,27 @@ class EngineTest(unittest.TestCase):
         self.assertIn("upload_error",events);self.assertIn("uploaded",events)
         self.assertLess(events.index("upload_error"),events.index("uploaded"))
         self.assertEqual(self.retry_bytes[0],self.retry_bytes[1])
+
+    def test_backlog_sends_large_batches_without_waiting_for_live_interval(self):
+        self.ack_extras = {'stored': True, 'processing_status': 'pending'}
+        queue = Spool(self.args.spool)
+        for sequence in range(2 * MAX_BATCH_FRAMES + 1):
+            queue.append("TEST","saved-run",{"sequence":sequence})
+        queue.close()
+        self.args.demo = False
+        self.args.batch_seconds = 5
+        self.args.duration = 3
+        stop = threading.Event()
+        def progress(kind, **values):
+            if kind == "uploaded":
+                self.assertIsNone(values['review'])
+                if values["pending"] == 0:
+                    stop.set()
+        with patch("ams_recorder.engine.MemoryReader") as reader:
+            reader.return_value.read.side_effect = MemoryUnavailable("Waiting for AMS2.")
+            run(self.args, stop, progress)
+        self.assertEqual([len(batch["frames"]) for batch in self.received.values()],[MAX_BATCH_FRAMES,MAX_BATCH_FRAMES,1])
+        self.assertEqual(self.ack_modes, ['stored'] * 3)
 
     def test_wrong_ack_does_not_emit_success_or_remove_queued_samples(self):
         self.bad_ack=True;events=[]
@@ -195,6 +274,32 @@ class EngineTest(unittest.TestCase):
         self.assertLess(events.index('link_required'), events.index('comms_ok'))
         self.assertLess(events.index('comms_ok'), events.index('captured'))
         self.assertIn('uploaded', events)
+
+    def test_game_replay_states_are_archived_in_both_upload_formats(self):
+        from ams_recorder.schema import SharedMemory
+        for formats in ([],[ENCODING]):
+            for state in (6,7):
+                with self.subTest(compact=bool(formats),game_state=state):
+                    self.capture_formats=formats
+                    self.args.demo=False
+                    self.received.clear()
+                    sdk=SharedMemory.from_buffer_copy(snapshot(91))
+                    sdk.mGameState=state
+                    raw=bytes(sdk)
+                    stop=threading.Event()
+                    events=[]
+                    def progress(kind,**values):
+                        if kind=='captured':events.append(values)
+                        if kind=='uploaded':stop.set()
+                    with patch('ams_recorder.engine.MemoryReader') as reader:
+                        reader.return_value.read.return_value=(raw,True)
+                        run(self.args,stop,progress)
+                    self.assertTrue(events)
+                    self.assertTrue(all(event['replay'] for event in events))
+                    for body in self.received.values():
+                        for record in body['frames']:
+                            metadata=record[0] if formats else record
+                            self.assertIs(metadata['replay'],True)
 
     def test_idle_recorder_probes_repeatedly_without_creating_game_uploads(self):
         self.args.demo = False

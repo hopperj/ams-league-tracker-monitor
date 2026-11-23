@@ -26,6 +26,20 @@ class StatusTest(unittest.TestCase):
         self.assertEqual(self.status.snapshot().title, 'Comms open, awaiting race data')
         self.assertIsNone(self.status.snapshot().last_upload_seconds)
 
+    def test_uploaded_server_queue_is_separate_from_local_queue_and_keeps_recording_red(self):
+        self.recording()
+        self.status.update('comms_ok', processing={'frames':12345,'batches':3000})
+        self.now+=4
+        indicator=self.status.snapshot()
+        self.assertEqual(indicator.pending,0)
+        self.assertEqual(indicator.server_pending,12345)
+        self.assertEqual(indicator.color,'red')
+        self.assertEqual(indicator.title,'Recording in progress')
+        self.status.update('comms_ok', processing={'frames':0})
+        self.assertEqual(self.status.snapshot().server_pending,0)
+        self.status.update('comms_ok')
+        self.assertIsNone(self.status.snapshot().server_pending)
+
     def test_live_capture_is_red_and_returns_to_green_when_data_stops(self):
         self.recording()
         self.assertEqual(self.status.snapshot().color, 'red')

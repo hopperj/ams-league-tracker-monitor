@@ -1,0 +1,17 @@
+[Unit]
+Description=AMS2 dedicated-server recorder
+After=ams2-dedicated.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/lib/ams2-dedicated-recorder
+ExecStart=/usr/bin/python3 -m ams_recorder.dedicated --unit ams2-dedicated.service --spool %S/ams2-dedicated-recorder/outbox.sqlite3 --config %E/ams2-dedicated-recorder/config.json
+StateDirectory=ams2-dedicated-recorder
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

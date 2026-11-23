@@ -13,7 +13,7 @@ from unittest.mock import patch
 from ams_recorder.decoder import decode
 from ams_recorder.demo import snapshot
 from ams_recorder.schema import SharedMemory, ParticipantInfo, STRUCT_BYTES, SEQUENCE_OFFSET
-from ams_recorder.spool import Spool
+from ams_recorder.spool import MAX_BATCH_FRAMES, Spool
 from ams_recorder.transport import Transport
 from ams_recorder.udp import packet_frame
 
@@ -91,6 +91,29 @@ class SpoolTest(unittest.TestCase):
         self.assertEqual(len(json.loads(gzip.decompress(first[1]))["frames"]),1)
         self.spool.acknowledge(first[0])
         self.assertEqual(json.loads(gzip.decompress(self.spool.batch("source")[1]))["event_code"],"RACE-TWO")
+
+    def test_larger_batch_keeps_existing_outbox_and_leaves_remaining_frames(self):
+        for sequence in range(MAX_BATCH_FRAMES + 130):
+            self.spool.append("AUTO","run",{"sequence":sequence,"name":"Élodie"})
+        existing = self.spool.batch("source", limit=120)
+        self.assertEqual(self.spool.batch("source"), existing)
+        self.spool.acknowledge(existing[0])
+        batch_id, payload = self.spool.batch("source")
+        frames = json.loads(gzip.decompress(payload))["frames"]
+        self.assertEqual(frames,[{"sequence":n,"name":"Élodie"} for n in range(120,120+MAX_BATCH_FRAMES)])
+        self.spool.acknowledge(batch_id)
+        self.assertEqual(self.spool.pending(),10)
+
+    def test_batch_size_counts_envelope_and_preserves_unsent_frames(self):
+        for sequence in range(10):
+            self.spool.append("AUTO","run",{"sequence":sequence,"raw_b64":"a"*80})
+        with patch("ams_recorder.spool.MAX_BATCH_JSON_BYTES", 400):
+            batch_id, payload = self.spool.batch("source")
+        body = gzip.decompress(payload)
+        self.assertLessEqual(len(body),400)
+        self.assertEqual([f["sequence"] for f in json.loads(body)["frames"]],[0,1])
+        self.spool.acknowledge(batch_id)
+        self.assertEqual(self.spool.pending(),8)
 
     def test_queue_cannot_be_retargeted_to_another_driver(self):
         with self.assertRaises(ValueError):self.spool.bind("http://localhost:8787","another-driver")

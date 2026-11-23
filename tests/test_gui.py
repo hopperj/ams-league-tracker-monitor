@@ -37,6 +37,7 @@ class WindowTest(unittest.TestCase):
         if self.window.update_thread:self.window.update_thread.join(timeout=5)
         self.window.link_cancel.set()
         if self.window.link_thread:self.window.link_thread.join(timeout=5)
+        if self.window.join_thread:self.window.join_thread.join(timeout=6)
         try:self.root.destroy()
         except Exception:pass
         self.temp.cleanup()
@@ -68,15 +69,106 @@ class WindowTest(unittest.TestCase):
             self.assertIsNot(threading.current_thread(),threading.main_thread())
             on_event("started");on_event('comms_ok');on_event("captured",decoded=True,consistent=True,game_state=2);on_event("uploaded",pending=0)
             stop.wait(3);on_event("stopped",pending=0)
-        with patch("ams_recorder.gui.run",side_effect=recorder):
+        with patch("ams_recorder.gui.run",side_effect=recorder), patch("ams_recorder.gui.webbrowser.open") as browser:
             self.window.start()
             limit=time.monotonic()+3
             while time.monotonic()<limit and self.window.title.get()!="Recording in progress":self.root.update();time.sleep(.01)
             self.assertEqual(self.window.title.get(),"Recording in progress")
+            self.window.webapp_button.invoke()
+            browser.assert_called_once_with('http://127.0.0.1:8787/dashboard')
+            self.assertTrue(self.window.worker.is_alive())
             self.window.stop()
             while time.monotonic()<limit and self.window.worker:self.root.update();time.sleep(.01)
             self.assertIsNone(self.window.worker)
             self.assertEqual(self.window.light.itemcget(self.window.bulb,"fill"),GRAY)
+
+    def test_saved_connections_have_no_key_field(self):
+        self.assertFalse(hasattr(self.window,'token'))
+        self.assertEqual(len(self.window.entries),2)
+        self.assertEqual(self.window.config['token'],'test-token')
+
+    def test_join_lookup_and_launch_keep_recording_and_the_window_running(self):
+        self.window.auto_link_attempted = True
+        requested, release = threading.Event(), threading.Event()
+        join = dict(name='Current lobby', address='198.51.100.21:27015', password=False)
+
+        def lookup(server):
+            self.assertEqual(server, 'http://127.0.0.1:8787')
+            self.assertIsNot(threading.current_thread(), threading.main_thread())
+            requested.set()
+            release.wait(3)
+            return join
+
+        def recorder(args, stop, on_event):
+            on_event('comms_ok')
+            stop.wait(5)
+
+        with patch('ams_recorder.gui.run', side_effect=recorder), \
+                patch('ams_recorder.gui.current_server', side_effect=lookup) as fetch, \
+                patch('ams_recorder.gui.webbrowser.open', return_value=True) as browser:
+            self.window.start()
+            self.window.join_button.invoke()
+            try:
+                self.assertTrue(requested.wait(1))
+                self.root.update()
+                self.window.poll()
+                self.assertEqual(str(self.window.join_button.cget('state')), 'disabled')
+                self.assertTrue(self.window.worker.is_alive())
+                self.assertFalse(self.window.stop_event.is_set())
+                self.window.join_server()
+                self.assertEqual(fetch.call_count, 1)
+            finally:release.set()
+            self.window.join_thread.join(timeout=3)
+            self.window.poll()
+            browser.assert_called_once_with('steam://run/1066890//-connect%20198.51.100.21%3A27015')
+            self.assertEqual(str(self.window.join_button.cget('state')), 'normal')
+            self.assertTrue(self.window.worker.is_alive())
+
+    def test_private_join_can_cancel_or_launch_without_saving_the_password(self):
+        join = dict(name='Private lobby', address='198.51.100.21:27015', password=True)
+        original = self.window.config_path.read_bytes()
+        with patch('ams_recorder.gui.current_server', return_value=join) as fetch, \
+                patch('ams_recorder.gui.webbrowser.open', return_value=True) as browser:
+            self.window.join_button.invoke()
+            self.window.join_thread.join(timeout=3)
+            self.window.poll()
+            self.assertEqual(self.window.join_password.cget('show'), '*')
+            self.window.join_password.insert(0, 'discard this')
+            actions = self.window.join_dialog.winfo_children()[0].winfo_children()[-1]
+            actions.winfo_children()[0].invoke()
+            self.assertIsNone(self.window.join_dialog)
+            self.assertIsNone(self.window.join_password)
+            browser.assert_not_called()
+            self.window.join_button.invoke()
+            self.window.join_thread.join(timeout=3)
+            self.window.poll()
+            self.assertEqual(fetch.call_count, 2)
+            self.assertEqual(self.window.join_password.get(), '')
+            self.window.join_password.insert(0, 'secret password')
+            actions = self.window.join_dialog.winfo_children()[0].winfo_children()[-1]
+            actions.winfo_children()[1].invoke()
+            from urllib.parse import unquote
+            self.assertEqual(unquote(browser.call_args[0][0]),
+                             'steam://run/1066890//-connect 198.51.100.21:27015 -password "secret password"')
+            self.assertIsNone(self.window.join_dialog)
+            self.assertIsNone(self.window.join_password)
+            self.assertEqual(self.window.config_path.read_bytes(), original)
+
+    def test_join_failures_are_separate_from_capture_health_and_can_retry(self):
+        with patch('ams_recorder.gui.current_server', side_effect=OSError('Offline')), \
+                patch.object(self.window, 'join_error') as error:
+            self.window.join_button.invoke()
+            self.window.join_thread.join(timeout=3)
+            self.window.poll()
+            error.assert_called_once()
+            self.assertFalse(self.window.failed)
+            self.assertFalse(self.window.stop_event.is_set())
+            self.assertEqual(str(self.window.join_button.cget('state')), 'normal')
+        with patch('ams_recorder.gui.webbrowser.open', return_value=False), \
+                patch.object(self.window, 'join_error') as error:
+            self.window.launch_join(dict(address='198.51.100.21:27015', password=False))
+            self.assertIn('Steam and AMS2', error.call_args[0][0])
+            self.assertFalse(self.window.failed)
 
     def test_normal_launch_enables_recording_without_pressing_start(self):
         import tkinter as tk
@@ -167,13 +259,19 @@ class WindowTest(unittest.TestCase):
         self.root.geometry('470x500')
         self.root.deiconify()
         self.window.status.update('started')
-        self.window.status.update('comms_ok')
+        self.window.status.update('comms_ok',processing={'frames':12345})
         self.window.poll()
         self.root.update()
+        self.assertIn('Queued on PC: 0',self.window.pending.get())
+        self.assertIn('Server processing: 12,345',self.window.pending.get())
         title = self.window.title_label
         self.assertGreaterEqual(title.winfo_height(), title.winfo_reqheight())
         bottom = self.window.start_button.winfo_rooty() + self.window.start_button.winfo_height()
         self.assertLessEqual(bottom, self.root.winfo_rooty() + self.root.winfo_height())
+        for button in (self.window.webapp_button, self.window.join_button):
+            self.assertTrue(button.winfo_ismapped())
+            self.assertGreaterEqual(button.winfo_height(), button.winfo_reqheight())
+            self.assertLessEqual(button.winfo_rootx() + button.winfo_width(), self.root.winfo_rootx() + self.root.winfo_width())
         self.root.withdraw()
 
     def test_first_launch_creates_an_offline_connection_without_a_setup_prompt(self):

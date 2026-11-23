@@ -6,6 +6,39 @@ Changes are listed newest first. Entries under Unreleased describe source change
 
 - Check for Windows recorder updates every five minutes while the window is open. Download and verify releases in the background, then check every minute for a five-minute recording-free window before restarting to install. Startup checks and the saved Steam connection are retained.
 
+## 0.6.10
+
+- Distinguish **Queued on PC** from **Server processing** so successfully uploaded recordings do not look lost while the webapp processes them. Server counts refresh with the existing health check; they do not pause capture or uploads.
+- Mark in-game and front-end replay snapshots as replay archives instead of live driving, while retaining their original bytes.
+- Keep queued uploads back-to-back, including partial batches; the webapp combines stored small uploads for efficient processing.
+
+## 0.6.9
+
+- Add **Join server** beside **Open webapp**. Fetch the current dedicated-server connection and launch AMS2 through Steam; private lobbies ask for a password without saving it.
+- Keep recording and uploads running during server lookup and the password prompt. Connection or Steam-launch failures leave recording controls available.
+
+## 0.6.8
+
+- Add an **Open webapp** button to the recorder header. It opens the configured webapp's dashboard in the default browser while recording continues.
+- Support native AMS2 dedicated-server snapshots and log events through the dedicated recorder mode.
+
+## 0.6.7
+
+- Upload lossless compact AMS2 snapshots when the server supports the format, with up to 512 frames per batch for backlog recovery.
+- Keep live uploads frequent and preserve existing queues and Steam links during updates.
+
+## 0.6.6
+
+- Request acknowledgement as soon as the server safely stores each batch so uploads can continue during background race processing.
+
+## 0.6.5
+
+- Send the next batch immediately whenever samples are queued, including partial batches. Poll only while the queue is empty and back off after failed requests.
+
+## 0.6.4
+
+- Upload live samples about once a second and drain saved data in batches of up to 240 frames within the existing server size limits. Keep the exact bytes of any batch already queued for retry.
+
 ## 0.6.3
 
 - Restore Steam approval with clean browser links and retain compatibility with older webapps.

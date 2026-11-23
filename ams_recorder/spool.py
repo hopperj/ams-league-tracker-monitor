@@ -2,11 +2,28 @@
 import gzip
 import json
 import sqlite3
+import struct
 import time
 import uuid
+import zlib
 from pathlib import Path
 
+from .compact_wire import MAX_FRAMES, MAX_RAW_BYTES, pack
+from .decoder import decode
 from .transport import canonical_server
+
+
+MAX_BATCH_FRAMES = 240
+MAX_BATCH_JSON_BYTES = 15 * 1024 * 1024
+MAX_BATCH_GZIP_BYTES = 8 * 1024 * 1024
+RAW_FRAME = struct.Struct("<4sI")
+RAW_MAGIC = b"AMSR"
+
+
+def read_raw_frame(payload):
+    _, size = RAW_FRAME.unpack_from(payload)
+    offset = RAW_FRAME.size + size
+    return json.loads(payload[RAW_FRAME.size:offset]), zlib.decompress(payload[offset:])
 
 
 def encode(value):
@@ -50,9 +67,28 @@ class Spool:
             self.db.execute("INSERT OR REPLACE INTO metadata VALUES('destination',?)", (destination,))
 
     def append(self, event_code, run_id, frame):
+        self._append(event_code, run_id, gzip.compress(encode(frame), mtime=0))
+
+    def append_raw(self, event_code, run_id, metadata, raw):
+        header = encode(metadata)
+        self._append(event_code, run_id, RAW_FRAME.pack(RAW_MAGIC, len(header)) + header + zlib.compress(raw, level=1))
+
+    def _append(self, event_code, run_id, payload):
         with self.db:
             self.db.execute("INSERT INTO frames(event_code,run_id,payload) VALUES(?,?,?)",
-                            (event_code, run_id, gzip.compress(encode(frame), mtime=0)))
+                            (event_code, run_id, payload))
+
+    def append_frames(self, event_code, run_id, frames, *, checkpoint=None):
+        rows = [(event_code, run_id, gzip.compress(encode(frame), mtime=0)) for frame in frames]
+        with self.db:
+            self.db.executemany("INSERT INTO frames(event_code,run_id,payload) VALUES(?,?,?)", rows)
+            if checkpoint is not None:
+                key, value = checkpoint
+                self.db.execute("INSERT OR REPLACE INTO metadata VALUES(?,?)", (key, encode(value)))
+
+    def checkpoint(self, key):
+        row = self.db.execute("SELECT value FROM metadata WHERE key=?", (key,)).fetchone()
+        return json.loads(row[0]) if row else None
 
     def pending(self):
         return self.db.execute("SELECT count(*) FROM frames").fetchone()[0]
@@ -62,37 +98,76 @@ class Spool:
         # after a large backlog had been acknowledged.
         return int(self.db.execute("SELECT value FROM metadata WHERE key='queued_bytes'").fetchone()[0]) + self.db.execute("SELECT coalesce(sum(length(payload)),0) FROM outbox").fetchone()[0]
 
-    def batch(self, recorder_id, limit=120):
+    def batch(self, recorder_id, limit=None, *, compact=False, compact_limit=MAX_FRAMES):
         row = self.db.execute("SELECT id,payload FROM outbox LIMIT 1").fetchone()
         if row:
             return row
-        rows = self.db.execute("SELECT id,event_code,run_id,payload FROM frames ORDER BY id LIMIT ?", (limit,)).fetchall()
+        gzip_limit = MAX_BATCH_FRAMES if limit is None else limit
+        fetch_limit = gzip_limit
+        if compact:
+            fetch_limit = min(compact_limit, MAX_FRAMES if limit is None else min(limit, MAX_FRAMES))
+        rows = self.db.execute("SELECT id,event_code,run_id,payload FROM frames ORDER BY id LIMIT ?", (fetch_limit,)).fetchall()
         if not rows:
             return None
         # Keep each batch within one event and process run. Old backlog keeps its original destination.
         event, run = rows[0][1:3]
-        selected, frames, size = [], [], 0
-        for row in rows:
+        batch_id = str(uuid.uuid4())
+        metadata = {"schema_version": 1, "batch_id": batch_id, "recorder_id": recorder_id,
+                    "event_code": event, "run_id": run, "created_at_ms": int(time.time() * 1000)}
+        if compact:
+            packed = self.compact_batch(rows, metadata)
+            if packed:
+                payload, last_frame = packed
+                with self.db:
+                    self.db.execute("INSERT INTO outbox VALUES(?,?,?)", (batch_id, payload, last_frame))
+                return batch_id, payload
+        prefix = encode(metadata)[:-1] + b',"frames":['
+        suffix = b']}'
+        frames = []
+        size = len(prefix) + len(suffix)
+        for row in rows[:gzip_limit]:
             if row[1:3] != (event, run):
                 break
-            body = gzip.decompress(row[3])
-            if selected and size + len(body) > 12 * 1024 * 1024:
+            stored = row[3]
+            if stored.startswith(RAW_MAGIC):
+                metadata, raw = read_raw_frame(stored)
+                frame = decode(raw, metadata.pop("driver_name", None))
+                frame.update(metadata, source_kind="shared_memory")
+                body = encode(frame)
+            else:
+                body = gzip.decompress(stored)
+            frame_size = len(body) + bool(frames)
+            if frames and size + frame_size > MAX_BATCH_JSON_BYTES:
                 break
-            selected.append(row[0])
-            frames.append(json.loads(body))
-            size += len(body)
-        batch_id = str(uuid.uuid4())
-        body = {"schema_version": 1, "batch_id": batch_id, "recorder_id": recorder_id,
-                "event_code": event, "run_id": run, "created_at_ms": int(time.time() * 1000), "frames": frames}
-        payload = gzip.compress(encode(body), compresslevel=6, mtime=0)
-        while len(payload) > 8 * 1024 * 1024 and len(frames) > 1:
+            frames.append(body)
+            size += len(body) + (len(frames) > 1)
+        payload = gzip.compress(prefix + b','.join(frames) + suffix, compresslevel=6, mtime=0)
+        while len(payload) > MAX_BATCH_GZIP_BYTES and len(frames) > 1:
             frames = frames[:max(1,len(frames)//2)]
-            selected = selected[:len(frames)]
-            body["frames"] = frames
-            payload = gzip.compress(encode(body), compresslevel=6, mtime=0)
+            payload = gzip.compress(prefix + b','.join(frames) + suffix, compresslevel=6, mtime=0)
         with self.db:
-            self.db.execute("INSERT INTO outbox VALUES(?,?,?)", (batch_id, payload, selected[-1]))
+            self.db.execute("INSERT INTO outbox VALUES(?,?,?)", (batch_id, payload, rows[len(frames)-1][0]))
         return batch_id, payload
+
+    def compact_batch(self, rows, header):
+        records = []
+        event, run = rows[0][1:3]
+        for _, row_event, row_run, body in rows:
+            if (row_event, row_run) != (event, run):
+                break
+            # Old backlog and UDP archives remain in their original format.
+            if not body.startswith(RAW_MAGIC):
+                break
+            extras, raw = read_raw_frame(body)
+            if not 1 <= len(raw) <= MAX_RAW_BYTES or records and len(raw) != len(records[0][1]):
+                break
+            records.append((extras, raw))
+        while records:
+            try:
+                return pack(dict(header, schema_version=2), records), rows[len(records) - 1][0]
+            except (ValueError, OverflowError):
+                records = records[:len(records) // 2]
+        return None
 
     def acknowledge(self, batch_id):
         with self.db:
