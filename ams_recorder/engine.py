@@ -132,7 +132,7 @@ def run(args, stop_event=None, on_event=None):
                     outgoing.close()
 
         run_id, sequence = str(uuid.uuid4()), itertools.count()
-        capture_lock = threading.RLock()
+        capture_lock = getattr(args, 'capture_lock', None) or threading.RLock()
         udp_participants = None
         if getattr(args, 'udp_detection', False) and not (args.demo or args.replay):
             from .udp import ParticipantCache

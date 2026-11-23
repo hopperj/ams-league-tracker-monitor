@@ -7,8 +7,10 @@ import time
 import unittest
 from unittest.mock import patch
 
+from ams_recorder import updates
 from ams_recorder.configuration import save_configuration
 from ams_recorder.gui import GREEN, RED, AMBER, GRAY, RecorderWindow
+from ams_recorder.status import RecorderStatus
 
 
 class LauncherTest(unittest.TestCase):
@@ -76,11 +78,6 @@ class WindowTest(unittest.TestCase):
             self.assertIsNone(self.window.worker)
             self.assertEqual(self.window.light.itemcget(self.window.bulb,"fill"),GRAY)
 
-    def test_saved_connections_have_no_key_field(self):
-        self.assertFalse(hasattr(self.window,'token'))
-        self.assertEqual(len(self.window.entries),2)
-        self.assertEqual(self.window.config['token'],'test-token')
-
     def test_normal_launch_enables_recording_without_pressing_start(self):
         import tkinter as tk
 
@@ -124,6 +121,11 @@ class WindowTest(unittest.TestCase):
                 if window.update_thread:
                     window.update_thread.join(timeout=3)
                 root.destroy()
+
+    def test_saved_connections_have_no_key_field(self):
+        self.assertFalse(hasattr(self.window,'token'))
+        self.assertEqual(len(self.window.entries),2)
+        self.assertEqual(self.window.config['token'],'test-token')
 
     def test_unlinked_window_disables_start_and_can_reopen_browser_approval(self):
         window = self.window
@@ -218,7 +220,7 @@ class WindowTest(unittest.TestCase):
     def test_ready_update_hands_off_then_closes_before_recording_or_browser_linking(self):
         plan=self.path/'plan.json'
         with patch('ams_recorder.gui.updates.native_target',return_value=self.path/'recorder.exe'), \
-                patch('ams_recorder.gui.updates.check_release',return_value=object()), \
+                patch('ams_recorder.gui.updates.check_release',return_value=updates.Release('1.0.0','a'*64,128)), \
                 patch('ams_recorder.gui.updates.prepare_install',return_value=plan), \
                 patch('ams_recorder.gui.updates.launch_helper') as helper, \
                 patch('ams_recorder.gui.run') as run, \
@@ -231,7 +233,7 @@ class WindowTest(unittest.TestCase):
     def test_stop_after_download_cancels_the_queued_handoff_without_starting_capture(self):
         plan=self.path/'plan.json'
         with patch('ams_recorder.gui.updates.native_target',return_value=self.path/'recorder.exe'), \
-                patch('ams_recorder.gui.updates.check_release',return_value=object()), \
+                patch('ams_recorder.gui.updates.check_release',return_value=updates.Release('1.0.0','a'*64,128)), \
                 patch('ams_recorder.gui.updates.prepare_install',return_value=plan), \
                 patch('ams_recorder.gui.updates.discard_install') as discard, \
                 patch('ams_recorder.gui.updates.launch_helper') as helper, \
@@ -244,7 +246,7 @@ class WindowTest(unittest.TestCase):
         self.window.auto_link_attempted=True
         def recorder(args,stop,on_event):on_event('started');stop.wait(3)
         with patch('ams_recorder.gui.updates.native_target',return_value=self.path/'recorder.exe'), \
-                patch('ams_recorder.gui.updates.check_release',return_value=object()), \
+                patch('ams_recorder.gui.updates.check_release',return_value=updates.Release('1.0.0','a'*64,128)), \
                 patch('ams_recorder.gui.updates.prepare_install',return_value=self.path/'plan.json'), \
                 patch('ams_recorder.gui.updates.launch_helper',side_effect=ValueError('Bad plan')), \
                 patch('ams_recorder.gui.updates.discard_install',side_effect=ValueError('Bad plan')), \
@@ -253,6 +255,88 @@ class WindowTest(unittest.TestCase):
             limit=time.monotonic()+3
             while time.monotonic()<limit and not run.called:self.root.update();time.sleep(.01)
             self.assertTrue(run.called);self.assertFalse(self.window.closing)
+
+    def enable_periodic_updates(self):
+        self.now=0
+        self.window.status=RecorderStatus(clock=lambda:self.now)
+        self.window.update_target=self.path/'recorder.exe'
+        self.window.next_release_check=300
+        self.window.auto_link_attempted=True
+        release=updates.Release('1.0.0','a'*64,128)
+        return updates.StagedRelease(release,self.path/'staged')
+
+    def drain_update(self):
+        if self.window.update_thread:
+            self.window.update_thread.join(timeout=3)
+            self.window.poll()
+
+    def test_runtime_download_and_rechecks_do_not_interrupt_recording(self):
+        staged=self.enable_periodic_updates()
+        plan=self.path/'plan.json'
+        active=threading.Event()
+        def recorder(args,stop,on_event):
+            on_event('comms_ok')
+            on_event('captured',decoded=True,consistent=True,game_state=2)
+            active.set()
+            stop.wait(5)
+            on_event('stopped')
+        with patch('ams_recorder.gui.run',side_effect=recorder), \
+                patch('ams_recorder.gui.updates.check_release',return_value=staged.release) as check, \
+                patch('ams_recorder.gui.updates.stage_release',return_value=staged) as download, \
+                patch('ams_recorder.gui.updates.prepare_staged_install',return_value=plan) as prepare, \
+                patch('ams_recorder.gui.updates.launch_helper') as helper:
+            self.window.start()
+            self.assertTrue(active.wait(1))
+            self.now=299;self.window.tick_updates();check.assert_not_called()
+            self.now=300;self.window.tick_updates();self.drain_update()
+            self.assertIs(self.window.pending_update,staged)
+            self.assertEqual(self.window.status.mode,'recording')
+            self.assertFalse(self.window.stop_event.is_set())
+            self.assertEqual(self.window.next_install_check,360)
+            self.now=360;self.window.tick_updates();prepare.assert_not_called()
+            self.now=370;self.window.status.update('captured',decoded=True,consistent=True,game_state=1)
+            for stamp in (420,480,540):
+                self.now=stamp;self.window.tick_updates()
+            self.now=600;self.window.tick_updates();self.drain_update()
+            self.assertEqual(check.call_count,2)
+            download.assert_called_once()
+            self.now=660;self.window.tick_updates();prepare.assert_not_called()
+            self.assertFalse(self.window.stop_event.is_set())
+            self.now=720;self.window.tick_updates()
+            self.assertTrue(self.window.stop_event.is_set())
+            helper.assert_not_called()
+            self.window.worker.join(timeout=3)
+            self.window.poll()
+            self.drain_update()
+            helper.assert_called_once_with(plan)
+            self.assertNotIn('--start-stopped',prepare.call_args.args[3])
+
+    def test_runtime_install_preserves_an_explicitly_stopped_recorder(self):
+        staged=self.enable_periodic_updates()
+        plan=self.path/'plan.json'
+        with patch('ams_recorder.gui.updates.check_release',return_value=staged.release), \
+                patch('ams_recorder.gui.updates.stage_release',return_value=staged), \
+                patch('ams_recorder.gui.updates.prepare_staged_install',return_value=plan) as prepare, \
+                patch('ams_recorder.gui.updates.launch_helper') as helper, \
+                patch('ams_recorder.gui.run') as run:
+            self.now=300;self.window.tick_updates();self.drain_update()
+            self.now=359;self.window.tick_updates();prepare.assert_not_called()
+            self.now=360;self.window.tick_updates();self.drain_update()
+            self.assertIn('--start-stopped',prepare.call_args.args[3])
+            helper.assert_called_once_with(plan)
+            run.assert_not_called()
+
+    def test_recovered_recorder_checks_for_newer_releases_without_retrying_failed_release(self):
+        failed=self.enable_periodic_updates()
+        self.window.failed_update_version=failed.release.version
+        newer=updates.StagedRelease(updates.Release('1.0.1','b'*64,128),self.path/'newer')
+        with patch('ams_recorder.gui.updates.check_release',side_effect=[failed.release,newer.release]), \
+                patch('ams_recorder.gui.updates.stage_release',return_value=newer) as download:
+            self.now=300;self.window.tick_updates();self.drain_update()
+            download.assert_not_called()
+            self.now=600;self.window.tick_updates();self.drain_update()
+            self.assertIs(self.window.pending_update,newer)
+            self.assertEqual(download.call_args.args[0],newer.release)
 
 
 if __name__ == "__main__":unittest.main()

@@ -22,6 +22,9 @@ MANIFEST = 'recorder-update.json'
 LATEST = REPOSITORY + '/releases/latest/download/' + MANIFEST
 MAX_EXE = 256 * 1024 * 1024
 DOWNLOAD_SECONDS = 120
+CHECK_INTERVAL = 300
+INSTALL_CHECK_INTERVAL = 60
+RECORDING_IDLE_SECONDS = 300
 ALLOWED_HOSTS = {'github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com'}
 
 
@@ -208,14 +211,17 @@ def probe(executable, job):
         return body['version']
 
 
-def prepare_install(release, target, updates_root, cancel, notify, restart_args=None, opener=None, probe_fn=probe):
-    target, updates_root = Path(target).resolve(), Path(updates_root).resolve()
+@dataclass(frozen=True)
+class StagedRelease:
+    release: Release
+    job: Path
+
+
+def stage_release(release, updates_root, cancel, notify, opener=None, probe_fn=probe):
+    updates_root = Path(updates_root).resolve()
     updates_root.mkdir(parents=True, exist_ok=True, mode=0o700)
     job = Path(tempfile.mkdtemp(prefix='update-', dir=str(updates_root)))
-    staged = target.with_name('.' + target.name + '.' + job.name + '.exe')
-    claimed = False
     try:
-        claim(updates_root, target, job); claimed = True
         cancelled(cancel)
         candidate = job / 'candidate.exe'
         download(release, candidate, cancel, notify, opener)
@@ -224,6 +230,26 @@ def prepare_install(release, target, updates_root, cancel, notify, restart_args=
         if probe_fn(candidate, job) != release.version:
             raise UpdateError('Downloaded recorder version does not match its release')
         cancelled(cancel)
+        return StagedRelease(release, job)
+    except Exception:
+        shutil.rmtree(job, ignore_errors=True)
+        raise
+
+
+def discard_release(downloaded):
+    shutil.rmtree(downloaded.job, ignore_errors=True)
+
+
+def prepare_staged_install(downloaded, target, cancel, restart_args=None):
+    target = Path(target).resolve()
+    release, job = downloaded.release, downloaded.job
+    candidate = job / 'candidate.exe'
+    staged = target.with_name('.' + target.name + '.' + job.name + '.exe')
+    claimed = False
+    try:
+        cancelled(cancel)
+        claim(job.parent, target, job)
+        claimed = True
         # Preflight write permission and stage on the target's own filesystem;
         # LocalAppData and the executable can live on different drives.
         with staged.open('xb') as output, candidate.open('rb') as source:
@@ -243,8 +269,13 @@ def prepare_install(release, target, updates_root, cancel, notify, restart_args=
     except Exception:
         if staged.exists(): staged.unlink()
         if claimed: release_claim(job, target)
-        shutil.rmtree(job, ignore_errors=True)
+        discard_release(downloaded)
         raise
+
+
+def prepare_install(release, target, updates_root, cancel, notify, restart_args=None, opener=None, probe_fn=probe):
+    downloaded = stage_release(release, updates_root, cancel, notify, opener, probe_fn)
+    return prepare_staged_install(downloaded, target, cancel, restart_args)
 
 
 def read_plan(path):
@@ -345,9 +376,10 @@ def apply_install(plan_path, wait=wait_for_process, start=start_recorder, replac
             write_json(job / 'result.json', dict(status='failed', version=plan['version']))
         except OSError:
             pass
-        # If installation/restart failed, reopen the preserved version once.
-        # --skip-update prevents a repeated failure/restart loop.
-        if can_restart and target.exists(): start(target, plan['restart_args'])
+        # Keep checking for new releases after recovery without repeatedly
+        # restarting to install the release that just failed.
+        if can_restart and target.exists():
+            start(target, [*plan['restart_args'], '--failed-update-version=' + plan['version']])
         return False
     finally:
         if staged.exists(): staged.unlink()

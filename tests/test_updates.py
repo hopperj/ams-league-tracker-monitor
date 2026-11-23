@@ -158,12 +158,14 @@ class InstallTest(unittest.TestCase):
         self.assert_identity_preserved()
 
     def test_failed_restart_rolls_back_and_reopens_the_previous_recorder_once(self):
-        plan=self.stage();images=[]
+        plan=self.stage();images=[];restart_args=[]
         def start(target,args):
             images.append(target.read_bytes())
+            restart_args.append(args)
             if len(images)==1:raise OSError('Could not launch new recorder')
         self.assertFalse(updates.apply_install(plan,wait=lambda pid:None,start=start))
         self.assertEqual(images,[self.new,self.old]);self.assertEqual(self.target.read_bytes(),self.old)
+        self.assertEqual(restart_args,[self.args,[*self.args,'--failed-update-version='+self.release.version]])
         self.assert_identity_preserved()
 
     def test_parent_timeout_does_not_start_a_second_recorder_or_replace_the_running_one(self):
@@ -185,6 +187,21 @@ class InstallTest(unittest.TestCase):
         self.assertTrue(first.exists())
         updates.discard_install(first)
         self.assertEqual(list((self.data/'updates').iterdir()),[])
+
+    def test_background_download_does_not_claim_the_installed_executable_while_waiting(self):
+        root=self.data/'updates'
+        cancel=threading.Event()
+        downloaded=updates.stage_release(self.release,root,cancel,lambda text:None,
+            opener=Opener(self.new),probe_fn=lambda candidate,job:self.release.version)
+        self.assertEqual((downloaded.job/'candidate.exe').read_bytes(),self.new)
+        self.assertEqual(self.target.read_bytes(),self.old)
+        self.assertFalse(updates.lock_path(root,self.target.resolve()).exists())
+        plan=updates.prepare_staged_install(downloaded,self.target,cancel,self.args)
+        self.assertTrue(updates.lock_path(root,self.target.resolve()).exists())
+        self.assertEqual(self.target.read_bytes(),self.old)
+        updates.discard_install(plan)
+        self.assertEqual(list(root.iterdir()),[])
+        self.assert_identity_preserved()
 
     def test_an_independent_installation_change_is_never_overwritten(self):
         plan=self.stage();other=executable(b'another installed version');self.target.write_bytes(other)

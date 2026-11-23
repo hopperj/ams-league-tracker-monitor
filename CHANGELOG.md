@@ -4,6 +4,8 @@ Changes are listed newest first. Entries under Unreleased describe source change
 
 ## Unreleased
 
+- Check for Windows recorder updates every five minutes while the window is open. Download and verify releases in the background, then check every minute for a five-minute recording-free window before restarting to install. Startup checks and the saved Steam connection are retained.
+
 ## 0.6.3
 
 - Restore Steam approval with clean browser links and retain compatibility with older webapps.

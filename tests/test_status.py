@@ -34,6 +34,29 @@ class StatusTest(unittest.TestCase):
         self.status.update('comms_ok')
         self.assertEqual(self.status.snapshot().color, 'green')
 
+    def test_update_idle_time_requires_a_continuous_inactive_period(self):
+        self.recording()
+        self.now += 600
+        self.status.update('upload_error',message='Server unavailable')
+        self.status.update('snapshot_retry',message='Busy')
+        self.assertFalse(self.status.recording_idle_for(300))
+        self.status.update('captured',decoded=True,consistent=True,game_state=3)
+        self.assertFalse(self.status.recording_idle_for(300))
+        self.status.update('captured',decoded=True,consistent=True,game_state=1)
+        self.now += 299
+        self.assertFalse(self.status.recording_idle_for(300))
+        self.status.update('capture_wait',message='Waiting for AMS2.',waiting=True)
+        self.now += 1
+        self.assertTrue(self.status.recording_idle_for(300))
+        self.status.update('captured',decoded=True,consistent=True,game_state=2)
+        self.status.update('stopping')
+        self.assertFalse(self.status.recording_idle_for(300))
+        self.status.update('stopped')
+        self.now += 300
+        self.assertTrue(self.status.recording_idle_for(300))
+        self.status.update('started')
+        self.assertFalse(self.status.recording_idle_for(300))
+
     def test_menu_or_absent_game_is_ready_when_communication_is_healthy(self):
         self.ready()
         self.status.update('capture_wait', message='Waiting for AMS2.', waiting=True)

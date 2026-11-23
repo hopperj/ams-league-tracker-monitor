@@ -77,7 +77,9 @@ The packaged Windows executable checks for a newer published release at startup,
 
 If an update is ready, a separate helper waits for the old process to close, replaces the executable atomically on its own drive and restarts it with the same configuration and queue paths. The saved installation ID, private upload credential and Steam account link stay intact. **An ordinary update does not require another Steam login.** A removed or revoked account link still requires normal approval.
 
-The window stays responsive while checking and downloading. **Skip update & start** continues with the installed version. An unavailable update service, bad download or failed preflight also leaves the installed version running. Installation or launch failures restore the preserved executable where needed. Updates occur during startup, so a running recording is not interrupted.
+The window also checks for updates every five minutes and downloads available releases in the background. After the download and preflight, it checks every minute for five continuous minutes without recording. It then closes the recorder normally and applies the update. Active capture, including paused gameplay and replay capture, delays installation even during an upload problem. An armed recorder resumes waiting for AMS2 after the restart. A stopped recorder stays stopped.
+
+The window stays responsive while checking and downloading. **Skip update & start** continues with the installed version at startup. An unavailable update service, bad download or failed preflight leaves the installed version running. Installation or launch failures restore the preserved executable where needed.
 
 Update files and a recovery copy live under the configuration directory's `updates` folder; completed jobs are cleaned up after seven days. Recorder credentials and browser cookies are never sent to GitHub. The recorder's capture status light continues to describe recording and upload health, separately from the update message.
 

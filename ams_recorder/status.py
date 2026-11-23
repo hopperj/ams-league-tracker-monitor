@@ -70,6 +70,7 @@ class RecorderStatus:
         self.last_capture = None
         self.last_upload = None
         self.last_comms = None
+        self.recording_idle_since = self.clock()
         self.pending = 0
         self.attention_since = None
         self.healthy_color = 'gray'
@@ -78,6 +79,8 @@ class RecorderStatus:
         with self.lock:
             at = values.get("at", self.clock())
             if kind == "started":
+                if self.mode != "recording":
+                    self.recording_idle_since = at
                 self.mode = "recording"
                 self.problem = self.capture_error = self.capture_reason = self.upload_error = None
                 self.snapshot_retry = None
@@ -89,6 +92,12 @@ class RecorderStatus:
             elif kind == 'updating':
                 self.mode = 'updating'
             elif kind == "captured":
+                menu_or_exit = (values.get("decoded") and values.get("consistent")
+                                and not values.get("replay") and values.get("game_state") in (0, 1))
+                if not menu_or_exit:
+                    self.recording_idle_since = None
+                elif self.recording_idle_since is None:
+                    self.recording_idle_since = at
                 self.last_capture = None
                 self.capture_error = None
                 self.snapshot_retry = None
@@ -108,6 +117,8 @@ class RecorderStatus:
                 self.capture_error = None if values.get('waiting') else values['message']
                 if values.get('waiting'):
                     self.capture_reason = None
+                    if self.recording_idle_since is None:
+                        self.recording_idle_since = at
                 self.last_capture = None
             elif kind == "snapshot_retry":
                 self.snapshot_retry = values["message"]
@@ -133,12 +144,18 @@ class RecorderStatus:
                 self.mode = "stopping"
             elif kind == "stopped":
                 self.mode = "idle"
+                if self.recording_idle_since is None:
+                    self.recording_idle_since = at
             elif kind == "fatal":
                 self.problem = values["message"]
             if "pending" in values:
                 self.pending = values["pending"]
             # A recovery between UI polls must reset the warning delay.
             self._track_attention(at)
+
+    def recording_idle_for(self, seconds):
+        with self.lock:
+            return self.recording_idle_since is not None and self.clock() - self.recording_idle_since >= seconds
 
     def _attention(self, now):
         if self.problem:
