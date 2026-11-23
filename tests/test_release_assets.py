@@ -8,6 +8,7 @@ from unittest.mock import patch
 import zipfile
 
 from ams_recorder import __version__, updates
+from ams_recorder.installation import INSTALLER_ASSET
 from test_updates import executable, Opener
 
 
@@ -19,6 +20,9 @@ class ReleaseAssetsTest(unittest.TestCase):
             folder=Path(directory);payload=executable()
             (folder/updates.ASSET).write_bytes(payload)
             (folder/(updates.ASSET+'.sha256')).write_text(hashlib.sha256(payload).hexdigest()+'  '+updates.ASSET+'\n')
+            setup=executable(b'installer')
+            (folder/INSTALLER_ASSET).write_bytes(setup)
+            (folder/(INSTALLER_ASSET+'.sha256')).write_text(hashlib.sha256(setup).hexdigest()+'  '+INSTALLER_ASSET+'\n')
             with zipfile.ZipFile(folder/'AMSLeagueRecorder-Python-Portable.pyz','w') as archive:
                 archive.writestr('__main__.py','print("portable")\n')
             with patch('sys.argv',['prepare_release','--dist',str(folder),'--tag','v'+__version__,
@@ -34,3 +38,13 @@ class ReleaseAssetsTest(unittest.TestCase):
             self.assertEqual(release.url,updates.REPOSITORY+'/releases/download/v'+__version__+'/'+updates.ASSET)
             sums=(folder/'SHA256SUMS').read_text()
             self.assertIn(hashlib.sha256(raw).hexdigest()+'  '+updates.MANIFEST,sums)
+            descriptor=json.loads((folder/'manifest.json').read_text())
+            self.assertEqual(descriptor['sha256'],hashlib.sha256(payload).hexdigest())
+            self.assertEqual(descriptor['installer'],dict(filename=INSTALLER_ASSET,
+                sha256=hashlib.sha256(setup).hexdigest(),size=len(setup)))
+            for file in (INSTALLER_ASSET,INSTALLER_ASSET+'.sha256','manifest.json'):
+                self.assertIn(hashlib.sha256((folder/file).read_bytes()).hexdigest()+'  '+file,sums)
+            with zipfile.ZipFile(folder/'AMSLeagueRecorder-Windows-x64-Intel-AMD.zip') as package:
+                self.assertIn(INSTALLER_ASSET,package.namelist())
+                self.assertNotIn(updates.ASSET,package.namelist())
+                self.assertEqual(package.read(INSTALLER_ASSET),setup)
