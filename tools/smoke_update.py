@@ -17,15 +17,16 @@ from ams_recorder.configuration import save_configuration
 from ams_recorder.spool import Spool
 
 
-def main():
+def main(built=None, installed_target=None):
     if os.name != 'nt': raise SystemExit('The native updater smoke check requires Windows')
-    built=Path(sys.argv[1]).resolve()
+    built=Path(built or sys.argv[1]).resolve()
     api=C.WinDLL('kernel32',use_last_error=True)
     api.CreateFileW.argtypes=[W.LPCWSTR,W.DWORD,W.DWORD,C.c_void_p,W.DWORD,W.DWORD,W.HANDLE]
     api.CreateFileW.restype=W.HANDLE;api.CloseHandle.argtypes=[W.HANDLE]
     with tempfile.TemporaryDirectory() as directory:
         root=Path(directory);install=root/"Recorder's folder with spaces";install.mkdir()
-        target=install/'Recorder.exe';shutil.copyfile(built,target)
+        target=Path(installed_target) if installed_target else install/'Recorder.exe'
+        if installed_target is None:shutil.copyfile(built,target)
         data=root/'LocalAppData'/'AMSLeagueRecorder';data.mkdir(parents=True)
         config,spool=data/'config.json',data/'spool.sqlite3'
         save_configuration(config,dict(server='https://example.invalid',token='smoke-only-private-credential',

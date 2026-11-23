@@ -11,10 +11,14 @@ if ($LASTEXITCODE -ne 0) { throw "A 64-bit Python installation is required." }
 if ($LASTEXITCODE -ne 0) { throw "Recorder tests failed." }
 & .\.venv\Scripts\python.exe -m pip install "pyinstaller>=6,<7"
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller installation failed." }
-& .\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --onefile --windowed --noupx --name $recorderName --paths . tools/launcher.py
+& .\.venv\Scripts\python.exe tools/windows_version.py build/windows-version.txt
+if ($LASTEXITCODE -ne 0) { throw "Windows version metadata generation failed." }
+& .\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --onefile --windowed --noupx --version-file build/windows-version.txt --name $recorderName --paths . tools/launcher.py
 if ($LASTEXITCODE -ne 0) { throw "The executable build failed." }
 & .\.venv\Scripts\python.exe tools/smoke_gui.py $executable
 if ($LASTEXITCODE -ne 0) { throw "The packaged recorder window failed its startup check." }
 & .\.venv\Scripts\python.exe tools/smoke_update.py $executable
 if ($LASTEXITCODE -ne 0) { throw "The packaged recorder failed its self-update check." }
+& .\.venv\Scripts\python.exe tools/build_installer.py
+if ($LASTEXITCODE -ne 0) { throw "The Windows installer build or smoke check failed." }
 Write-Output "Recorder executable: $executable"

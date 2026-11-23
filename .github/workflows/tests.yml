@@ -32,7 +32,7 @@ jobs:
         with:
           python-version: '3.12'
           architecture: x64
-      - name: Build and check the recorder window
+      - name: Build and check the recorder window and installer
         shell: powershell
         run: ./tools/build_windows.ps1
       - name: Prepare download and checksum
@@ -41,12 +41,17 @@ jobs:
           Copy-Item docs/windows-quickstart.txt dist/README.txt
           $hash = (Get-FileHash dist/AMSLeagueRecorder-Windows-x64-Intel-AMD.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  AMSLeagueRecorder-Windows-x64-Intel-AMD.exe" | Out-File dist/AMSLeagueRecorder-Windows-x64-Intel-AMD.exe.sha256 -Encoding ascii
+          $setup = "AMSLeagueRecorder-Setup-Windows-x64-Intel-AMD.exe"
+          $setupHash = (Get-FileHash "dist/$setup" -Algorithm SHA256).Hash.ToLower()
+          "$setupHash  $setup" | Out-File "dist/$setup.sha256" -Encoding ascii
       - uses: actions/upload-artifact@v4
         with:
           name: AMSLeagueRecorder-Windows-x64-Intel-AMD
           path: |
             dist/AMSLeagueRecorder-Windows-x64-Intel-AMD.exe
             dist/AMSLeagueRecorder-Windows-x64-Intel-AMD.exe.sha256
+            dist/AMSLeagueRecorder-Setup-Windows-x64-Intel-AMD.exe
+            dist/AMSLeagueRecorder-Setup-Windows-x64-Intel-AMD.exe.sha256
             dist/README.txt
           if-no-files-found: error
           retention-days: 90
