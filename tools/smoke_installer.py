@@ -65,7 +65,8 @@ def main():
             assert (install/enrollment.name).read_bytes() == enrollment.read_bytes()
             links = shortcuts(name)
             for link in links:
-                assert Path(link['target']) == target and Path(link['working']) == install, link
+                # Shell shortcuts expand 8.3 user-profile aliases to long paths.
+                assert Path(link['target']).samefile(target) and Path(link['working']).samefile(install), link
             # A running recorder/helper makes even silent Setup stop, never kill it.
             with running():
                 assert setup(installer, install, root/'running.log') != 0, 'Setup ignored a running recorder'
