@@ -4,7 +4,7 @@ Windows recorder for Automobilista 2. It preserves complete shared-memory snapsh
 
 [Download published Windows builds](https://github.com/hopperj/ams-league-tracker-monitor/releases/latest) · [Changelog](CHANGELOG.md) · [Upload protocol](docs/protocol-v1.md)
 
-The source version is **0.6.10**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
+The source version is **0.6.11**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
 
 ## Driver setup
 
@@ -20,7 +20,7 @@ Use **Join server** in the top bar to launch AMS2 through Steam and connect to t
 
 The personalized setup file is single-use and has no expiry. Browser approval links last 20 minutes; use **Link Steam account** again if one expires. Approved installation links have no time limit. Updates preserve the installation ID, private upload credential, destination and queued bytes.
 
-If you previously ran the recorder directly from Downloads or an extracted folder, close it and run the installer once. It reuses your saved Steam connection and queue. Afterward, open **AMS League Recorder** from the Start menu or desktop shortcut and remove obsolete portable copies. Older tagged downloads may still use the portable packaging until an installer-enabled release is published.
+If you previously ran the recorder directly from Downloads or an extracted folder, close it and run the installer once. It reuses your saved Steam connection and queue. Afterward, open **AMS League Recorder** from the Start menu or desktop shortcut and remove obsolete portable copies.
 
 ## Recorder status
 

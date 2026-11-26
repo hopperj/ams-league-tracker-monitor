@@ -2,7 +2,7 @@
 
 Changes are listed newest first. Entries under Unreleased describe source changes that have not yet been published as a tagged download.
 
-## Unreleased
+## 0.6.11
 
 - Add a per-user Windows installer with a permanent primary executable, Start menu and desktop shortcuts, and data-preserving uninstall. Self-updates replace the installed executable atomically; stale installers cannot downgrade it. Existing Steam links and queues are reused, including personalized setup from website downloads.
 - Build, checksum and package the installer in Windows CI, with native checks for installation, running-app protection, updates through stable shortcuts, downgrade refusal and uninstall.
