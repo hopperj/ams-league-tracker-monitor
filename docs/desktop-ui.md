@@ -1,6 +1,6 @@
 # Recorder desktop window
 
-The desktop client is implemented in `ams_recorder/gui.py`, using Python's [Tkinter](https://docs.python.org/3/library/tkinter.html). The window shows driver and session identity, one status light, an explanation, last-upload age, queued sample count, and Start/Stop controls. Connection settings are in a separate setup window.
+The desktop client is implemented in `ams_recorder/gui.py`, using Python's [Tkinter](https://docs.python.org/3/library/tkinter.html). The window shows the driver name, one status light, an explanation, last-upload age, queued sample count, and Start/Stop controls.
 
 **Open webapp** in the top bar opens the configured server's dashboard in the default browser. It remains available while recording or checking for updates and uses the browser's normal sign-in session. Recorder credentials are never included in the link. Without a readable saved setup, it opens `https://ams2.ioresearch.ca/dashboard`.
 
@@ -16,7 +16,7 @@ An acknowledged upload with processing warnings shows **Data saved — review** 
 
 ## Setup and shutdown
 
-The default address is `https://ams2.ioresearch.ca`. The optional capture code defaults to **AUTO**, which records driving without per-session setup. Blank input also means AUTO. Previously saved explicit codes remain unchanged until the user edits setup. First-time setup verifies the upload credential and checks queue destination binding before atomically saving configuration. Setup masks the token and does not log it. An existing setup is reused, and opening the window starts capture automatically. A saved configuration starts without requiring the network to be available first.
+The desktop window reuses the saved server and capture settings and starts recording automatically. A fresh installation defaults to `https://ams2.ioresearch.ca` and captures all driving sessions. It creates a local recorder identity before making network requests and checks the queue's destination. To change the server or a saved capture code, close the recorder and use `python -m ams_recorder configure` from the source checkout or the equivalent `configure` command in the portable Python archive.
 
 Changing a session code requires stopping first. Queued batches keep their original session code and immutable retry bytes. Stop/close cancels new capture and waits for the current upload request to finish, retaining any remaining queue for the next run. Restarting the app does not delete the queue. Saved late or unassigned uploads do not block later batches. An administrator can reopen or assign those captures on the server.
 

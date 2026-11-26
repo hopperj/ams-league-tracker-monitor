@@ -11,12 +11,12 @@ import threading
 import webbrowser
 from types import SimpleNamespace
 
-from .configuration import DEFAULT_SERVER, connection_values, defaults, prepare_configuration
+from .configuration import DEFAULT_SERVER, defaults
 from . import __version__, updates
 from .engine import DEFAULT_BATCH_SECONDS, run
 from .enrollment import prepare_enrolled, connect as connect_account
 from .join import JoinError, current_server, steam_url
-from .status import RecorderStatus, upload_problem
+from .status import RecorderStatus
 from .transport import canonical_server
 
 PAPER, INK, MUTED = "#f3f5f4", "#1a222b", "#6d7883"
@@ -54,11 +54,9 @@ class RecorderWindow:
         self.pending_update = None
         self.next_install_check = None
         self.link_cancel = threading.Event()
-        self.busy = False
         self.closing = False
         self.failed = False
         self.stop_event = threading.Event()
-        self.cancel_setup = threading.Event()
         self.messages = queue.Queue()
         self.status = RecorderStatus()
         self.update_target = updates.native_target() if background_updates else None
@@ -91,15 +89,11 @@ class RecorderWindow:
         self.webapp_button.pack(side="left", fill="x", expand=True, padx=(5, 0))
         body = tk.Frame(root, background=PAPER, padx=22, pady=20)
         body.pack(fill="both", expand=True)
-        identity = tk.Frame(body, background=PAPER)
-        identity.pack(fill="x", pady=(0, 16))
-        identity.columnconfigure(0, weight=1)
-        self.driver = tk.StringVar(value="Connect your recorder")
-        tk.Label(identity, textvariable=self.driver, foreground=INK, background=PAPER, anchor="w", justify="left", wraplength=330, font=(family, 11, "bold")).grid(row=0, column=0, sticky="ew")
-        self.settings_button = ttk.Button(identity, text="Setup", command=self.toggle_setup)
-        self.settings_button.grid(row=0, column=1, padx=(12, 0))
+        self.driver = tk.StringVar(value="AMS2 recorder")
+        tk.Label(body, textvariable=self.driver, foreground=INK, background=PAPER, anchor="w",
+                 justify="left", wraplength=420, font=(family, 11, "bold")).pack(fill="x", pady=(0, 16))
         account_row=tk.Frame(body,background=PAPER);account_row.pack(fill="x",pady=(0,12))
-        self.account_label=tk.StringVar(value="Link Steam to enable recording")
+        self.account_label=tk.StringVar()
         tk.Label(account_row,textvariable=self.account_label,background=PAPER,foreground=MUTED,font=(family,9),wraplength=310,anchor="w",justify="left").pack(side="left",fill="x",expand=True)
         self.link_button=ttk.Button(account_row,text="Link Steam account",command=self.link_account);self.link_button.pack(side="right")
         card = tk.Frame(body, background="white", highlightbackground="#dde2e5", highlightthickness=1, padx=15, pady=20)
@@ -120,8 +114,6 @@ class RecorderWindow:
             self.detail_label.configure(wraplength=width)
             self.title_label.configure(wraplength=width)
         card.bind("<Configure>", resize_status)
-        tk.Label(body, text='Green: ready  ·  Red: recording  ·  Amber: sustained issue',
-                 foreground=MUTED, background=PAPER, font=(family, 9)).pack(anchor='w', pady=(8, 0))
         metrics = tk.Frame(body, background=PAPER)
         metrics.pack(fill="x", pady=(11, 15))
         self.last_upload = tk.StringVar(value="Last upload: —")
@@ -140,37 +132,13 @@ class RecorderWindow:
         self.update_text = tk.StringVar(value='Recorder v'+__version__)
         tk.Label(body, textvariable=self.update_text, foreground=MUTED, background=PAPER,
                  font=(family, 9), wraplength=440, anchor='w', justify='left').pack(fill='x', pady=(10, 0))
-        self.setup_dialog = tk.Toplevel(root)
-        self.setup_dialog.withdraw()
-        self.setup_dialog.title("Recorder setup")
-        self.setup_dialog.configure(background=PAPER)
-        self.setup_dialog.geometry("520x355")
-        self.setup_dialog.minsize(470, 355)
-        self.setup_dialog.transient(root)
-        self.setup_dialog.protocol("WM_DELETE_WINDOW", self.hide_setup)
-        self.setup_frame = tk.Frame(self.setup_dialog, background=PAPER, padx=22, pady=12)
-        self.setup_frame.pack(fill="both", expand=True)
-        tk.Label(self.setup_frame, text="RECORDER SETUP", foreground=MUTED, background=PAPER, font=(family, 9, "bold")).pack(anchor="w", pady=(22, 5))
-        tk.Label(self.setup_frame, text="These settings are optional. Leave the default server address and AUTO to capture all driving. For Human/AI labels, enable Project CARS 2 UDP and a nonzero UDP frequency in AMS2.", foreground=MUTED, background=PAPER, font=(family, 9), wraplength=470, justify="left").pack(anchor="w", pady=(0, 8))
-        self.server = tk.StringVar(value=DEFAULT_SERVER)
-        self.event_code = tk.StringVar(value="AUTO")
-        self.entries = []
-        for label, variable, masked in (("Server address", self.server, False), ("Capture code (optional)", self.event_code, False)):
-            tk.Label(self.setup_frame, text=label, foreground=INK, background=PAPER, font=(family, 9)).pack(anchor="w", pady=(6, 3))
-            entry = ttk.Entry(self.setup_frame, textvariable=variable, show="*" if masked else "")
-            entry.pack(fill="x")
-            self.entries.append(entry)
-        self.save_button = ttk.Button(self.setup_frame, text="Save setup & start", command=lambda: self.save_setup(True))
-        self.save_button.pack(anchor="e", pady=(12, 0))
-        self.setup_visible = False
         try:
             self.config, enrollment_notice = prepare_enrolled(self.config_path, self.spool_path)
-            self.apply_configuration(self.config)
+            self.show_driver(self.config['driver_name'])
             self.show_saved_account(self.config)
             if enrollment_notice:self.account_label.set(enrollment_notice)
         except (OSError, ValueError, KeyError, TypeError):
-            self.status.update("fatal", message="Saved setup could not be read. Restore the original config.json so queued data keeps its recorder connection.")
-            self.toggle_setup()
+            self.status.update("fatal", message="Saved recorder settings could not be loaded. Restore the original config.json and reopen the recorder to keep its connection and queue.")
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.report_callback_exception = self.callback_error
         if self.config and auto_start:
@@ -260,7 +228,7 @@ class RecorderWindow:
         popup.after_idle(entry.focus_set)
 
     def startup(self):
-        if self.worker or self.busy or self.closing or self.update_thread:return
+        if self.worker or self.closing or self.update_thread:return
         if self.link_thread and self.link_thread.is_alive():
             self.start()
             return
@@ -347,7 +315,7 @@ class RecorderWindow:
                 self.check_for_updates()
 
     def install_pending_update(self):
-        if (self.pending_update is None or self.update_thread or self.busy or self.setup_visible
+        if (self.pending_update is None or self.update_thread
                 or (self.link_thread and self.link_thread.is_alive())):
             return
         # The capture worker holds this same lock while saving and reporting
@@ -401,53 +369,8 @@ class RecorderWindow:
         else:
             self.account_label.set('Link Steam to enable recording')
 
-    def apply_configuration(self, config):
-        self.server.set(config["server"])
-        self.event_code.set(config["event_code"])
-        name = config['driver_name'] if config['driver_name'] != 'Waiting for AMS2' else 'AMS2 recorder'
-        self.driver.set(name + "  ·  " + ("All sessions (AUTO)" if config["event_code"]=="AUTO" else config["event_code"]))
-
-    def hide_setup(self):
-        self.setup_visible = False
-        self.setup_dialog.withdraw()
-
-    def toggle_setup(self):
-        if self.setup_visible:
-            self.hide_setup()
-        elif not self.worker and not self.busy and not self.startup_update and not self.installing_update:
-            self.setup_visible = True
-            self.setup_dialog.deiconify()
-            self.setup_dialog.lift()
-
-    def save_setup(self, start_after=False):
-        if self.worker or self.busy or self.startup_update or self.installing_update:
-            return
-        try:
-            values = connection_values(self.server.get(), 'automatic', self.event_code.get())
-        except ValueError as exc:
-            self.status.update("fatal", message=str(exc))
-            return
-        self.busy = True
-        self.cancel_setup.clear()
-        self.status.update("fatal", message="Saving recorder setup…")
-
-        def check():
-            try:
-                config = prepare_configuration(self.config_path, self.spool_path, values[0], values[2])
-                if self.cancel_setup.is_set():
-                    self.messages.put(("setup_cancelled", None))
-                    return
-                self.messages.put(("setup_ok", (config, start_after)))
-            except ValueError:
-                self.messages.put(("setup_error", "Check your setup. Saved data must stay with its original recorder and server."))
-            except OSError as exc:
-                self.messages.put(("setup_error", upload_problem(exc)))
-            except Exception as exc:
-                LOG.error("Recorder setup failed (%s)", type(exc).__name__)
-                self.messages.put(("setup_error", "Setup could not be saved. Check the server details and available disk space."))
-
-        self.worker = threading.Thread(target=check, name="recorder-setup", daemon=True)
-        self.worker.start()
+    def show_driver(self, name):
+        self.driver.set(name if name != 'Waiting for AMS2' else 'AMS2 recorder')
 
     def start(self):
         if self.closing or self.installing_update:return
@@ -456,20 +379,8 @@ class RecorderWindow:
             self.update_cancel.set()
             self.update_text.set('Skipping update; starting installed recorder…')
             return
-        if self.worker or self.busy or self.closing:
+        if self.worker or not self.config:
             return
-        try:
-            values = connection_values(self.server.get(), 'automatic', self.event_code.get())
-        except ValueError as exc:
-            self.status.update("fatal", message=str(exc))
-            if not self.setup_visible:
-                self.toggle_setup()
-            return
-        if not self.config or (values[0], values[2]) != (self.config['server'], self.config['event_code']):
-            self.save_setup(True)
-            return
-        if self.setup_visible:
-            self.toggle_setup()
         self.stop_event = threading.Event()
         self.status.update("started")
         args = SimpleNamespace(config=str(self.config_path), spool=str(self.spool_path), hz=60, batch_seconds=DEFAULT_BATCH_SECONDS,
@@ -491,7 +402,7 @@ class RecorderWindow:
                 run(args, self.stop_event, progress)
             except Exception as exc:
                 LOG.error("Recording stopped (%s)", type(exc).__name__)
-                message = "Recording stopped. Check your setup and available disk space."
+                message = "Recording stopped. Check the recorder settings and available disk space."
                 if os.name != "nt" and not self.demo:
                     message = "Live AMS2 recording requires 64-bit Windows."
                 self.messages.put(("run_error", message))
@@ -507,7 +418,6 @@ class RecorderWindow:
             self.update_cancel.set()
         if self.worker:
             self.stop_event.set()
-            self.cancel_setup.set()
             self.status.update("stopping")
 
     def close(self):
@@ -576,7 +486,8 @@ class RecorderWindow:
                 elif kind == 'link_status':
                     self.account_label.set(value)
                 elif kind == 'link_complete':
-                    self.config=value;self.apply_configuration(value)
+                    self.config = value
+                    self.show_driver(value['driver_name'])
                     self.show_saved_account(value)
                 elif kind == 'link_required':
                     if self.account_linked:
@@ -588,24 +499,11 @@ class RecorderWindow:
                     self.account_label.set('Linked to: '+value if value else 'Steam account linked')
                 elif kind == 'link_done':
                     self.link_thread = self.approval_url = None
-                elif kind == "setup_ok":
-                    self.worker, self.busy = None, False
-                    self.config, start_after = value
-                    self.apply_configuration(self.config)
-                    self.show_saved_account(self.config)
-                    self.status = RecorderStatus()
-                    if not self.closing and not self.cancel_setup.is_set() and start_after:
-                        self.start()
-                elif kind in ("setup_error", "setup_cancelled"):
-                    self.worker, self.busy = None, False
-                    self.status = RecorderStatus()
-                    if value:
-                        self.status.update("fatal", message=value)
                 elif kind == "run_error":
                     self.status.update("fatal", message=value)
                 elif kind == 'identity' and value and value != 'Waiting for AMS2':
                     self.config['driver_name'] = value
-                    self.apply_configuration(self.config)
+                    self.show_driver(value)
                 elif kind == "run_done":
                     self.worker = None
                     self.status.update("stopped")
@@ -630,17 +528,13 @@ class RecorderWindow:
         self.last_upload.set('Comms: '+(str(state.last_comms_seconds)+'s ago' if state.last_comms_seconds is not None else '—')+
                              ' · Upload: '+(str(state.last_upload_seconds)+'s ago' if state.last_upload_seconds is not None else '—'))
         updating = self.startup_update or self.installing_update
-        locked = self.worker is not None or self.closing or updating
-        for widget in [self.settings_button, self.save_button, *self.entries]:
-            widget.configure(state="disabled" if locked else "normal")
-        self.save_button.configure(text='Save setup & start' if self.account_linked else 'Save setup')
         self.link_button.configure(text='Open Steam approval' if self.approval_url else 'Link Steam account',
             state='disabled' if updating or self.closing or not self.config or
             (self.link_thread and not self.approval_url) else 'normal')
         start_label = 'Start recording' if self.account_linked else 'Link Steam first'
         if self.startup_update:
             start_label = 'Skip update & start' if self.account_linked else 'Skip update'
-        elif self.account_linked and self.worker and not self.busy and not self.stop_event.is_set():
+        elif self.account_linked and self.worker and not self.stop_event.is_set():
             start_label = 'Recording enabled'
         self.start_button.configure(text=start_label,
             state='disabled' if self.worker or self.closing or self.installing_update or

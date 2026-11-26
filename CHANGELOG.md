@@ -2,6 +2,10 @@
 
 Changes are listed newest first. Entries under Unreleased describe source changes that have not yet been published as a tagged download.
 
+## 0.6.12
+
+- Simplify the recorder window by removing the Setup button, capture-mode label and colour legend. The driver name, live status and upload stats remain visible.
+
 ## 0.6.11
 
 - Add a per-user Windows installer with a permanent primary executable, Start menu and desktop shortcuts, and data-preserving uninstall. Self-updates replace the installed executable atomically; stale installers cannot downgrade it. Existing Steam links and queues are reused, including personalized setup from website downloads.

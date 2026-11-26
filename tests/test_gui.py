@@ -82,11 +82,6 @@ class WindowTest(unittest.TestCase):
             self.assertIsNone(self.window.worker)
             self.assertEqual(self.window.light.itemcget(self.window.bulb,"fill"),GRAY)
 
-    def test_saved_connections_have_no_key_field(self):
-        self.assertFalse(hasattr(self.window,'token'))
-        self.assertEqual(len(self.window.entries),2)
-        self.assertEqual(self.window.config['token'],'test-token')
-
     def test_join_lookup_and_launch_keep_recording_and_the_window_running(self):
         self.window.auto_link_attempted = True
         requested, release = threading.Event(), threading.Event()
@@ -214,10 +209,21 @@ class WindowTest(unittest.TestCase):
                     window.update_thread.join(timeout=3)
                 root.destroy()
 
-    def test_saved_connections_have_no_key_field(self):
-        self.assertFalse(hasattr(self.window,'token'))
-        self.assertEqual(len(self.window.entries),2)
-        self.assertEqual(self.window.config['token'],'test-token')
+    def test_window_shows_driver_and_status_without_setup_controls_or_colour_legend(self):
+        def descendants(parent):
+            for child in parent.winfo_children():
+                yield child
+                yield from descendants(child)
+
+        labels = [widget.cget('text') for widget in descendants(self.root) if 'text' in widget.keys()]
+        self.assertNotIn('Setup', labels)
+        self.assertFalse(any('Green: ready' in label for label in labels))
+        self.assertEqual(self.window.driver.get(), 'Alex Morgan')
+        self.assertEqual(self.window.config['event_code'], 'TEST')
+        self.assertEqual(self.window.config['token'], 'test-token')
+        self.window.messages.put(('identity', 'Jordan'))
+        self.window.poll()
+        self.assertEqual(self.window.driver.get(), 'Jordan')
 
     def test_unlinked_window_disables_start_and_can_reopen_browser_approval(self):
         window = self.window
@@ -283,7 +289,8 @@ class WindowTest(unittest.TestCase):
             self.assertTrue(window.config['auto_registration'])
             self.assertEqual(len(window.config['token']),43)
             self.assertEqual(window.config['event_code'],'AUTO')
-            self.assertFalse(window.setup_visible)
+            self.assertEqual(window.driver.get(), 'AMS2 recorder')
+            self.assertFalse(any(isinstance(widget, tk.Toplevel) for widget in root.winfo_children()))
             self.assertFalse(hasattr(window,'token'))
         finally:root.destroy()
 

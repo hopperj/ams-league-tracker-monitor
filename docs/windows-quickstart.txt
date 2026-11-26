@@ -13,9 +13,8 @@ compilation is required.
 3. Sign in with Steam and approve this recorder in the browser. Use Link Steam
    account if approval does not open. Recording waits for server confirmation.
 4. Recording is enabled automatically when you open the app. Use Stop to
-   pause and Start recording to resume. Setup is optional and lets you change
-   the server address or capture code. Keep https://ams2.ioresearch.ca and
-   AUTO for normal use. Existing settings and queued data survive upgrades.
+   pause and Start recording to resume. New installations capture all driving
+   sessions by default. Existing settings and queued data survive upgrades.
 5. Click Open webapp in the top bar to open your dashboard in the default
    browser. Recording continues while you use the website.
 6. Click Join server to launch AMS2 through Steam and join the current dedicated
@@ -38,10 +37,10 @@ Older webapps show a dash for this count. Replay snapshots are archived and
 do not count as live race telemetry.
 
 The app remembers your settings and verifies your Steam link on future launches.
-AUTO records solo practice and league driving across tracks and cars. The server
-organizes sessions; administrators separately approve official league nights.
-Older saved capture codes remain supported. To enable automatic recording, Stop,
-open Setup, change the capture code to AUTO, and save/start again.
+With the default settings, the recorder captures solo practice and league driving
+across tracks and cars. The server organizes sessions and administrators approve
+official league nights. Advanced connection settings are available through the
+portable Python command-line client.
 
 Failed deliveries remain queued locally and retry. Closing the app retains the
 remaining queue for the next launch. Settings, queue, and rotating recorder.log

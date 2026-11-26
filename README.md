@@ -4,7 +4,7 @@ Windows recorder for Automobilista 2. It preserves complete shared-memory snapsh
 
 [Download published Windows builds](https://github.com/hopperj/ams-league-tracker-monitor/releases/latest) · [Changelog](CHANGELOG.md) · [Upload protocol](docs/protocol-v1.md)
 
-The source version is **0.6.11**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
+The source version is **0.6.12**. Its Steam requirement, health checks and status colours need the corresponding webapp update. Published downloads remain on their tagged version until a new release is published.
 
 ## Driver setup
 
@@ -12,7 +12,7 @@ The source version is **0.6.11**. Its Steam requirement, health checks and statu
 2. Extract the ZIP and run `AMSLeagueRecorder-Setup-Windows-x64-Intel-AMD.exe`. It installs **AMS League Recorder** for your Windows account and creates Start menu and desktop shortcuts. Python and Tk are bundled; administrator access is not required. Direct GitHub downloads also offer the installer without a ZIP.
 3. Approve the recorder in your browser under your Steam account. Existing installations and generic downloads use **Link Steam account**. Website sign-in alone does not approve a recorder.
 4. In AMS2, select **Options → System → Shared Memory → Project CARS 2**.
-5. **Setup** is for changing the server address or using a specific capture code. With the default server and **AUTO**, practice, qualifying and races are captured automatically. League-night approval happens separately on the website.
+5. The recorder captures practice, qualifying and races automatically by default. League-night approval happens separately on the website.
 
 Opening the recorder enables recording automatically. The app waits for server confirmation of the Steam link and for AMS2 driving data. Use **Stop** to pause and **Start recording** to resume. Removed links or denied credentials pause capture. Older clients must also be linked to upload to the updated server.
 
